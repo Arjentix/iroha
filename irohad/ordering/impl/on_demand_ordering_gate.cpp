@@ -5,12 +5,11 @@
 
 #include "ordering/impl/on_demand_ordering_gate.hpp"
 
-#include <iterator>
-
 #include <boost/range/adaptor/filtered.hpp>
 #include <boost/range/adaptor/indexed.hpp>
 #include <boost/range/adaptor/transformed.hpp>
 #include <boost/range/empty.hpp>
+#include <iterator>
 
 #include "ametsuchi/tx_presence_cache.hpp"
 #include "ametsuchi/tx_presence_cache_utils.hpp"
@@ -36,7 +35,7 @@ OnDemandOrderingGate::OnDemandOrderingGate(
     : log_(std::move(log)),
       transaction_limit_(transaction_limit),
       ordering_service_(std::move(ordering_service)),
-      network_client_(std::move(network_client)),
+      connection_manager_(std::move(network_client)),
       proposal_factory_(std::move(factory)),
       tx_cache_(std::move(tx_cache)),
       syncing_mode_(syncing_mode) {}
@@ -56,7 +55,7 @@ void OnDemandOrderingGate::propagateBatch(
   // TODO iceseer 14.01.21 IR-959 Refactor to avoid copying.
   forLocalOS(&OnDemandOrderingService::onBatches,
              transport::OdOsNotification::CollectionType{batch});
-  network_client_->onBatches(
+  connection_manager_->onBatches(
       transport::OdOsNotification::CollectionType{batch});
 }
 
@@ -75,11 +74,16 @@ void OnDemandOrderingGate::processRoundSwitch(RoundSwitch const &event) {
   forLocalOS(&OnDemandOrderingService::onCollaborationOutcome,
              event.next_round);
 
+  // ToDo reduce network load: first send proposal_or_hash hash to announce the
+  // proposal_or_hash, then remote peers should request proposal_or_hash if they
+  // does not have it. Or send announce with transactions metainfo, remote peers
+  // request only those they do not have. Order is guarantied by BatchesCache
+  // and BatchesSet.
   this->sendCachedTransactions();
 
-  // request proposal for the current round
   if (!syncing_mode_)
-    network_client_->onRequestProposal(event.next_round);
+  connection_manager_->onRequestProposal(
+      event.next_round, ordering_service_->getProposalHash(event.next_round));
 }
 
 void OnDemandOrderingGate::stop() {
@@ -87,7 +91,7 @@ void OnDemandOrderingGate::stop() {
   if (not stop_requested_) {
     stop_requested_ = true;
     log_->info("Stopping.");
-    network_client_.reset();
+    connection_manager_.reset();
   }
 }
 
@@ -96,11 +100,25 @@ OnDemandOrderingGate::processProposalRequest(ProposalEvent const &event) const {
   if (not current_ledger_state_ || event.round != current_round_) {
     return std::nullopt;
   }
-  if (not event.proposal) {
+  std::shared_ptr<const shared_model::interface::Proposal> proposal;
+  if (std::holds_alternative<shared_model::crypto::Hash>(
+          event.proposal_or_hash)) {
+    // assume proposal_or_hash already exist in ordering_service's cache and has
+    // same hash for the round
+    auto [opt_proposal, hash] =
+        ordering_service_->getProposalWithHash(event.round);
+    assert(opt_proposal);
+    assert(*opt_proposal);
+    assert(hash
+           == std::get<shared_model::crypto::Hash>(event.proposal_or_hash));
+    if (opt_proposal)
+      proposal = *opt_proposal;
+  }
+  if (not proposal) {
     return network::OrderingEvent{
         std::nullopt, event.round, current_ledger_state_};
   }
-  auto result = removeReplaysAndDuplicates(*event.proposal);
+  auto result = removeReplaysAndDuplicates(proposal);
   // no need to check empty proposal
   if (boost::empty(result->transactions())) {
     return network::OrderingEvent{
@@ -157,8 +175,9 @@ void OnDemandOrderingGate::sendCachedTransactions() {
     }
 
     if (not batches.empty()) {
-      network_client_->onBatches(transport::OdOsNotification::CollectionType{
-          batches.begin(), end_iterator});
+      connection_manager_->onBatches(
+          transport::OdOsNotification::CollectionType{batches.begin(),
+                                                      end_iterator});
     }
   });
 }
@@ -220,12 +239,12 @@ OnDemandOrderingGate::removeReplaysAndDuplicates(
   auto unprocessed_txs =
       proposal->transactions() | boost::adaptors::indexed()
       | boost::adaptors::filtered(
-            [proposal_txs_validation_results =
-                 std::move(proposal_txs_validation_results)](const auto &el) {
-              return proposal_txs_validation_results.at(el.index());
-            })
+          [proposal_txs_validation_results =
+               std::move(proposal_txs_validation_results)](const auto &el) {
+            return proposal_txs_validation_results.at(el.index());
+          })
       | boost::adaptors::transformed(
-            [](const auto &el) -> decltype(auto) { return el.value(); });
+          [](const auto &el) -> decltype(auto) { return el.value(); });
 
   return proposal_factory_->unsafeCreateProposal(
       proposal->height(), proposal->createdTime(), unprocessed_txs);
