@@ -6,6 +6,7 @@
 #include "ordering/impl/on_demand_connection_manager.hpp"
 
 #include <gtest/gtest.h>
+
 #include <boost/range/combine.hpp>
 
 #include "datetime/time.hpp"
@@ -96,9 +97,10 @@ TEST_F(OnDemandConnectionManagerTest, onBatches) {
  */
 TEST_F(OnDemandConnectionManagerTest, onRequestProposal) {
   consensus::Round round{};
+  shared_model::crypto::Hash hash{};
   EXPECT_CALL(*connections[OnDemandConnectionManager::kIssuer],
-              onRequestProposal(round))
+              onRequestProposal(round, hash))
       .Times(1);
 
-  manager->onRequestProposal(round);
+  manager->onRequestProposal(round, hash);
 }
