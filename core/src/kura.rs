@@ -76,7 +76,6 @@ impl Kura {
         Ok(kura)
     }
 
-<<<<<<< HEAD
     /// Start the Kura thread
     pub fn start(kura: Arc<Self>) -> ThreadHandler {
         // Oneshot channel to allow forcefully stopping the thread.
@@ -91,30 +90,6 @@ impl Kura {
         };
 
         ThreadHandler::new(Box::new(shutdown), thread_handle)
-=======
-    /// Forcefully shut down the Kura thread.
-    /// Warning: any blocks currently in queue to be stored will be lost.
-    #[allow(clippy::expect_used)]
-    pub fn force_shutdown(&self) {
-        if let Some(BlockThreadHandle {
-            thread_handle,
-            shutdown_sender,
-        }) = self
-            .block_thread_handle
-            .lock()
-            .expect("lock block thread handle")
-            .take()
-        {
-            // Error here indicates the thread is already stopped, which is fine.
-            let _res = shutdown_sender.send(());
-            if let Err(error) = thread_handle.join() {
-                error!(
-                    "Kura force shutdown routine: Kura thread panicked with error: {:?}",
-                    error
-                );
-            }
-        }
->>>>>>> 25437edf ([fix] #2678: Fix tests abort on Kura force shutdown.)
     }
 
     /// Loads kura from configuration
@@ -237,7 +212,7 @@ impl Kura {
                         Err(error) => {
                             error!(
                                 "Failed to store block, ERROR = {}",
-                                failed_to_store_block_reason
+                                error
                             );
                             panic!("Kura has encountered a fatal I/O error.");
                         }

@@ -311,10 +311,11 @@ impl WorldStateView {
                 for (event_type, id) in matched_ids {
                     // Ignoring `None` variant cause this means that action was deleted after `handle_`
                     // call and before `inspect_matching()` call
+                    #[allow(unsafe_code)]
                     let _ = match event_type {
                         Event::Data(_) => {
                             let dangerous_reference = unsafe {
-                                let ptr = &self.world.triggers as *const TriggerSet; // TODO: REALLY FIX THIS
+                                let ptr : *const TriggerSet = &self.world.triggers; // TODO: #2757
                                 &*ptr
                             };
 
@@ -334,9 +335,9 @@ impl WorldStateView {
                         }
                         Event::Pipeline(_) => {
                             let dangerous_reference = unsafe {
-                                let ptr = &self.world.triggers as *const TriggerSet; // TODO: REALLY FIX THIS
+                                let ptr : *const TriggerSet = &self.world.triggers; // TODO: #2757
                                 &*ptr
-                            };
+                            };                            
 
                             dangerous_reference.pipeline_triggers.get(&id).map(|entry| {
                                 let action = entry.value();
@@ -354,7 +355,7 @@ impl WorldStateView {
                         }
                         Event::Time(_) => {
                             let dangerous_reference = unsafe {
-                                let ptr = &self.world.triggers as *const TriggerSet; // TODO: REALLY FIX THIS
+                                let ptr : *const TriggerSet = &self.world.triggers; // TODO: #2757
                                 &*ptr
                             };
 
@@ -374,7 +375,7 @@ impl WorldStateView {
                         }
                         Event::ExecuteTrigger(_) => {
                             let dangerous_reference = unsafe {
-                                let ptr = &self.world.triggers as *const TriggerSet; // TODO: REALLY FIX THIS
+                                let ptr : *const TriggerSet = &self.world.triggers; // TODO: #2757
                                 &*ptr
                             };
 
@@ -404,28 +405,26 @@ impl WorldStateView {
 
             for id in &succeed {
                 // Ignoring error if trigger has not `Repeats::Exact(_)` but something else
-                let _mod_repeats_res = self.world.triggers.mod_repeats(id, |n| {
+                let _mod_repeats_res = self.world.triggers.mod_repeats(id, |n| 
                     if n == 0 {
-                        // Possible i.e. if one trigger burned it-self or another trigger, cause we
+                        // Possible i.e. if one trigger burned it-self or another trigger, because we
                         // decrease the number of execution after successful execution
-                        return Ok(0);
+                        Ok(0)
+                    } else {
+                        Ok(n - 1)
                     }
-                    Ok(n - 1)
-                });
+                );
             }
 
-            self.world
-                .triggers
-                .remove_zeros(&self.world.triggers.data_triggers);
-            self.world
-                .triggers
-                .remove_zeros(&self.world.triggers.pipeline_triggers);
-            self.world
-                .triggers
-                .remove_zeros(&self.world.triggers.time_triggers);
-            self.world
-                .triggers
-                .remove_zeros(&self.world.triggers.by_call_triggers);
+            let triggers = &mut self.world.triggers;
+            triggers
+                .remove_zeros(&triggers.data_triggers);
+            triggers
+                .remove_zeros(&triggers.pipeline_triggers);
+            triggers
+                .remove_zeros(&triggers.time_triggers);
+            triggers
+                .remove_zeros(&triggers.by_call_triggers);
 
             res
         };
@@ -774,11 +773,7 @@ impl WorldStateView {
     /// Initializes WSV with the blocks from block storage.
     pub fn init(&mut self, blocks: Vec<VersionedCommittedBlock>) {
         for block in blocks {
-            #[allow(clippy::panic)]
-            if let Err(error) = self.apply(block) {
-                error!(%error, "Initialization of WSV failed");
-                panic!("WSV initialization failed");
-            }
+            self.apply(block).expect("Initialization of WSV failed.");
         }
     }
 
@@ -1088,7 +1083,7 @@ mod tests {
         assert!(wsv
             .blocks_after_hash(block_hashes[6])
             .iter()
-            .map(|block| block.hash())
+            .map(crate::block::VersionedCommittedBlock::hash)
             .eq(block_hashes.into_iter().skip(7)));
     }
 

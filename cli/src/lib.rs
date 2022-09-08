@@ -32,6 +32,8 @@ use tokio::{
     sync::{broadcast, Notify},
     task,
 };
+use iroha_p2p::network::NetworkBaseRelayOnlinePeers;
+
 use torii::Torii;
 
 mod event;
@@ -79,7 +81,8 @@ pub struct Iroha {
     pub torii: Option<Torii>,
     /// Thread handlers
     thread_handlers: Vec<ThreadHandler>,
-    sumeragi_relay: AlwaysAddr<FromNetworkBaseRelay>,
+    /// Relay that redirects messages from the network subsystem to core subsystems.
+    _sumeragi_relay: AlwaysAddr<FromNetworkBaseRelay>,
 }
 
 impl Drop for Iroha {
@@ -89,7 +92,6 @@ impl Drop for Iroha {
     }
 }
 
-use iroha_p2p::network::NetworkBaseRelayOnlinePeers;
 struct FromNetworkBaseRelay {
     sumeragi: Arc<Sumeragi>,
     broker: Broker,
@@ -340,7 +342,7 @@ impl Iroha {
             block_sync,
             torii,
             thread_handlers: vec![sumeragi_thread_handler, kura_thread_handler],
-            sumeragi_relay,
+            _sumeragi_relay: sumeragi_relay,
         })
     }
 

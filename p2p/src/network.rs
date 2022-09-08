@@ -288,8 +288,13 @@ where
     }
 }
 
+/// Because of how our translation units are set up, there cannot be interdependencies
+/// between p2p and the modules in core that use p2p. Therefore in order to put incomming
+/// messages in the appropriate queues they must first be sent to cli and then to core.
+/// This message informs sumeragi of the current online peers.
 #[derive(Clone, iroha_actor::Message)]
 pub struct NetworkBaseRelayOnlinePeers {
+    /// A list of the peers we are currently connected to by PeerId.
     pub online_peers: Vec<PeerId>,
 }
 
@@ -341,7 +346,7 @@ where
                 self.broker.issue_send(*msg).await;
             }
         };
-        let mut online_peers = self
+        let online_peers = self
             .peers
             .iter()
             .map(|(key, value)| PeerId {

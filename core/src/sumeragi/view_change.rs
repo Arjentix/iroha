@@ -20,12 +20,16 @@ use crate::block::{EmptyChainHash, VersionedCommittedBlock, VersionedValidBlock}
 /// The proof of a view change. It needs to be signed by f+1 peers for proof to be valid and view change to happen.
 #[derive(Debug, Clone, Decode, Encode, IntoSchema)]
 pub struct Proof {
+    /// Hash of the latest committed block.
     pub latest_block_hash: HashOf<VersionedCommittedBlock>,
+    /// Within a round, what is the index of the view change this proof is trying to prove.
     pub view_change_index: u64,
+    /// Collection of signatures from the different peers.
     pub signatures: Vec<Signature>,
 }
 
 impl Proof {
+    /// 
     pub fn signature_payload(&self) -> Hash {
         let mut buf = [0_u8; Hash::LENGTH + std::mem::size_of::<u64>()];
         buf[..Hash::LENGTH].copy_from_slice(self.latest_block_hash.as_ref());
@@ -83,6 +87,8 @@ impl Proof {
     }
 }
 
+/// Trait used to add proof chain manipulating functions
+/// to `Vec<Proof>`. There is no other implementor of `ProofChain`.
 pub trait ProofChain {
     /// Verify the view change proof chain.
     fn verify_with_state(
@@ -92,8 +98,10 @@ pub trait ProofChain {
         latest_block: &HashOf<VersionedCommittedBlock>,
     ) -> usize;
 
+    /// Remove invalid proofs from the chain.
     fn prune(&mut self, latest_block: &HashOf<VersionedCommittedBlock>);
 
+    /// Attempt to insert a view chain proof into this `ProofChain`.
     fn insert_proof(
         &mut self,
         peers: &HashSet<PeerId>,

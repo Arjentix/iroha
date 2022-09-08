@@ -10,7 +10,7 @@
 use std::time::Duration;
 
 use eyre::{Result, WrapErr};
-use futures::{prelude::*, stream::FuturesUnordered};
+use futures::{stream::FuturesUnordered};
 use iroha_crypto::{HashOf, KeyPair, SignatureOf};
 use iroha_data_model::prelude::*;
 use iroha_logger::prelude::*;
@@ -165,6 +165,7 @@ pub struct TransactionForwarded {
     pub transaction: VersionedSignedTransaction,
     /// `PeerId` of the peer that forwarded this transaction to a leader.
     pub peer: PeerId,
+    /// View change proof chain used to coordinate the role of the recieving peer.
     pub view_change_proofs: Vec<Proof>,
 }
 
@@ -188,6 +189,7 @@ impl TransactionForwarded {
 /// Message for gossiping batches of transactions.
 #[derive(Decode, Encode, Debug, Clone)]
 pub struct TransactionGossip {
+    /// Batch of transactions.
     pub txs: Vec<VersionedSignedTransaction>,
 }
 

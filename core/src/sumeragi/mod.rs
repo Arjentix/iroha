@@ -42,7 +42,6 @@ use self::{
 };
 use crate::{
     block::{BlockHeader, ChainedBlock, EmptyChainHash, VersionedPendingBlock},
-    genesis::GenesisNetworkTrait,
     kura::Kura,
     prelude::*,
     queue::Queue,
@@ -61,7 +60,7 @@ trait Consensus {
 /// `Sumeragi` is the implementation of the consensus.
 #[derive(Debug)]
 pub struct Sumeragi {
-    pub internal: SumeragiWithFault<NoFault>,
+    internal: SumeragiWithFault<NoFault>,
 }
 
 impl Sumeragi {
@@ -129,6 +128,7 @@ impl Sumeragi {
         })
     }
 
+    /// Update the metrics on the world state view.
     pub fn update_metrics(&self, network: Addr<IrohaNetwork>) -> Result<()> {
         use eyre::WrapErr;
         use thiserror::Error;
@@ -165,6 +165,7 @@ impl Sumeragi {
         Ok(())
     }
 
+    /// Get latest block hash for use by the block synchronization subsystem.
     pub fn latest_block_hash_for_use_by_block_sync(&self) -> HashOf<VersionedCommittedBlock> {
         self.internal
             .latest_block_hash_for_use_by_block_sync
@@ -173,6 +174,8 @@ impl Sumeragi {
             .clone()
     }
 
+    /// Get an array of blocks after the block identified by `block_hash`. Returns
+    /// an empty array if the specified block could not be found.
     pub fn blocks_after_hash(
         &self,
         block_hash: HashOf<VersionedCommittedBlock>,
@@ -184,6 +187,7 @@ impl Sumeragi {
             .blocks_after_hash(block_hash)
     }
 
+    /// Get an array of blocks from `block_height`. (blocks[block_height], blocks[block_height + 1] et cetera.)
     pub fn blocks_from_height(&self, block_height: usize) -> Vec<VersionedCommittedBlock> {
         self.internal
             .wsv_for_public_use
@@ -192,6 +196,7 @@ impl Sumeragi {
             .blocks_from_height(block_height)
     }
 
+    /// Get a random online peer for use in block synchronization.
     pub fn get_random_peer_for_block_sync(&self) -> Option<Peer> {
         use rand::{prelude::SliceRandom, RngCore, SeedableRng};
 
@@ -213,11 +218,15 @@ impl Sumeragi {
         }
     }
 
+    /// Access the world state view object in a locking fashion.
+    /// If you intend to do anything substantial you should clone
+    /// and release the lock. This is because no blocks can be produced
+    /// while this lock is held.
     pub fn wsv_mutex_access(&self) -> std::sync::MutexGuard<WorldStateView> {
         self.internal.wsv_for_public_use.lock().unwrap()
     }
 
-    /// Start the Kura thread
+    /// Start the sumeragi thread for this sumeragi instance.
     pub fn initialize_and_start_thread(
         sumeragi: Arc<Self>,
         latest_block_hash: HashOf<VersionedCommittedBlock>,
@@ -247,6 +256,7 @@ impl Sumeragi {
         ThreadHandler::new(Box::new(shutdown), thread_handle)
     }
 
+    /// Update the sumeragi internal online peers list.
     pub fn update_online_peers(&self, online_peers: Vec<PeerId>) {
         *self
             .internal
@@ -255,6 +265,7 @@ impl Sumeragi {
             .expect("Failed to lock on update online peers.") = online_peers;
     }
 
+    /// Deposit a sumeragi network message.
     pub fn incoming_message(&self, msg: Message) {
         if self
             .internal

@@ -66,7 +66,7 @@ impl VerifiedQueryRequest {
                 "Signature public key doesn't correspond to the account.",
             )));
         }
-        let mut wsv_cloned = wsv.clone();
+        let wsv_cloned = wsv.clone();
         query_judge
             .judge(&self.payload.account_id, &self.payload.query, wsv)
             .and_then(|_| {
@@ -274,6 +274,9 @@ async fn handle_blocks_stream(sumeragi: Arc<Sumeragi>, mut stream: WebSocket) ->
 
     loop {
         let blocks = sumeragi.blocks_from_height(from_height.try_into().unwrap());
+        if blocks.is_empty() {
+            break;
+        }
         stream_blocks(&mut from_height, blocks, &mut stream).await?;
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
@@ -404,7 +407,9 @@ async fn handle_version(sumeragi: Arc<Sumeragi>) -> Json {
 
 #[cfg(feature = "telemetry")]
 async fn handle_metrics(sumeragi: Arc<Sumeragi>, network: Addr<IrohaNetwork>) -> Result<String> {
-    sumeragi.update_metrics(network);
+    if let Err(error) = sumeragi.update_metrics(network) {
+        iroha_logger::error!(%error, "Error while calling sumeragi::update_metrics.");
+    }
     sumeragi
         .wsv_mutex_access()
         .metrics
@@ -414,7 +419,9 @@ async fn handle_metrics(sumeragi: Arc<Sumeragi>, network: Addr<IrohaNetwork>) ->
 
 #[cfg(feature = "telemetry")]
 async fn handle_status(sumeragi: Arc<Sumeragi>, network: Addr<IrohaNetwork>) -> Result<Json> {
-    sumeragi.update_metrics(network);
+    if let Err(error) = sumeragi.update_metrics(network) {
+        iroha_logger::error!(%error, "Error while calling sumeragi::update_metrics.");
+    }
     let status = Status::from(&sumeragi.wsv_mutex_access().metrics);
     Ok(reply::json(&status))
 }

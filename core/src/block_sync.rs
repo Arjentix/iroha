@@ -208,7 +208,7 @@ impl Message {
                         .await;
                 }
             }
-            Message::ShareBlocks(ShareBlocks { blocks, peer_id }) => {
+            Message::ShareBlocks(ShareBlocks { blocks, peer_id: _ }) => {
                 use crate::sumeragi::message::{BlockCommitted, Message};
                 for block in blocks {
                     block_sync

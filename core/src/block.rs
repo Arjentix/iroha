@@ -35,8 +35,6 @@ use crate::{
     tx::{TransactionValidator, VersionedAcceptedTransaction},
 };
 
-const PIPELINE_TIME_MS: u64 = DEFAULT_BLOCK_TIME_MS + DEFAULT_COMMIT_TIME_LIMIT_MS;
-
 /// Default estimation of consensus duration
 #[allow(clippy::integer_division)]
 pub const DEFAULT_CONSENSUS_ESTIMATION_MS: u64 =
