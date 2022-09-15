@@ -1,6 +1,8 @@
 [build]
 target = "wasm32-unknown-unknown"
+out-dir = "output"
 
 [unstable]
+unstable-options = true
 build-std = ["core", "alloc"]
 build-std-features = ["panic_immediate_abort"]
