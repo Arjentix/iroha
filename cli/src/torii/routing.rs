@@ -70,7 +70,8 @@ impl VerifiedQueryRequest {
         query_judge
             .judge(&self.payload.account_id, &self.payload.query, wsv)
             .and_then(|_| {
-                wsv_cloned.validators_view()
+                wsv_cloned
+                    .validators_view()
                     .validate(wsv, self.payload.query.clone())
             })
             .map_err(QueryError::Permission)?;
@@ -136,7 +137,7 @@ pub(crate) async fn handle_queries(
         let original_result = valid_request.execute(&wsv)?;
         (filter.filter(original_result), filter)
     };
-    
+
     let (total, result) = if let Value::Vec(vec_of_val) = result {
         let len = vec_of_val.len();
         let vec_of_val = apply_sorting_and_pagination(vec_of_val, &sorting, pagination);

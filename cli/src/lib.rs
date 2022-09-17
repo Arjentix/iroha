@@ -27,13 +27,12 @@ use iroha_core::{
     IrohaNetwork,
 };
 use iroha_data_model::prelude::*;
+use iroha_p2p::network::NetworkBaseRelayOnlinePeers;
 use tokio::{
     signal,
     sync::{broadcast, Notify},
     task,
 };
-use iroha_p2p::network::NetworkBaseRelayOnlinePeers;
-
 use torii::Torii;
 
 mod event;
@@ -248,7 +247,7 @@ impl Iroha {
             config.sumeragi.trusted_peers.peers.clone(),
         );
 
-        let kura = Kura::from_configuration(&config.kura, broker.clone())?;
+        let kura = Kura::from_configuration(&config.kura)?;
         let mut wsv_mutable =
             WorldStateView::from_configuration(config.wsv, world, events_sender.clone());
 

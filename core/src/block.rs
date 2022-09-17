@@ -28,10 +28,7 @@ use parity_scale_codec::{Decode, Encode};
 
 use crate::{
     prelude::*,
-    sumeragi::{
-        network_topology::Topology,
-        view_change::{Proof, ProofChain as ViewChangeProofs},
-    },
+    sumeragi::{network_topology::Topology, view_change::Proof},
     tx::{TransactionValidator, VersionedAcceptedTransaction},
 };
 

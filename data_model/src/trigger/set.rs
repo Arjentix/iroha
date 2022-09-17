@@ -420,14 +420,15 @@ impl Set {
         let mut succeed = Vec::new();
         let mut errors = Vec::new();
 
-        fn apply_f<F, E>(succeed: &mut Vec<Id>,
-                            errors: &mut Vec<E>,
-                            id: Id,
-                            action: &dyn ActionTrait,
-                         event: Event,
-        f: F)
-        where
-        F: Fn(&dyn ActionTrait, Event) -> std::result::Result<(), E> + Send + Copy,
+        fn apply_f<F, E>(
+            succeed: &mut Vec<Id>,
+            errors: &mut Vec<E>,
+            id: Id,
+            action: &dyn ActionTrait,
+            event: Event,
+            f: F,
+        ) where
+            F: Fn(&dyn ActionTrait, Event) -> std::result::Result<(), E> + Send + Copy,
             E: Send + Sync,
         {
             if let Repeats::Exactly(atomic) = action.repeats() {

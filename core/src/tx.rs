@@ -242,9 +242,10 @@ impl TransactionValidator {
         };
 
         let mut wsv_cloned = wsv.clone();
-        
+
         // Validating the transaction it-self
-        wsv_cloned.validators_view()
+        wsv_cloned
+            .validators_view()
             .validate(wsv, signed_tx.clone())
             .map_err(|reason| {
                 TransactionRejectionReason::NotPermitted(NotPermittedFail { reason })
@@ -253,9 +254,12 @@ impl TransactionValidator {
         // Validating the transaction instructions
         if let Executable::Instructions(instructions) = signed_tx.payload.instructions {
             for isi in instructions {
-                wsv_cloned.validators_view().validate(wsv, isi).map_err(|reason| {
-                    TransactionRejectionReason::NotPermitted(NotPermittedFail { reason })
-                })?;
+                wsv_cloned
+                    .validators_view()
+                    .validate(wsv, isi)
+                    .map_err(|reason| {
+                        TransactionRejectionReason::NotPermitted(NotPermittedFail { reason })
+                    })?;
             }
         }
 

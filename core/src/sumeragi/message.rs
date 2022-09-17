@@ -10,7 +10,7 @@
 use std::time::Duration;
 
 use eyre::{Result, WrapErr};
-use futures::{stream::FuturesUnordered};
+use futures::stream::FuturesUnordered;
 use iroha_crypto::{HashOf, KeyPair, SignatureOf};
 use iroha_data_model::prelude::*;
 use iroha_logger::prelude::*;

@@ -7,7 +7,7 @@
     clippy::expect_used
 )]
 
-use std::{sync::Arc, time::Duration};
+use core::time::Duration;
 
 use crossbeam_queue::ArrayQueue;
 use dashmap::{mapref::entry::Entry, DashMap};

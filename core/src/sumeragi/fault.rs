@@ -99,7 +99,7 @@ pub struct SumeragiStateMachineData {
     pub latest_block_hash: HashOf<VersionedCommittedBlock>,
     pub latest_block_height: u64,
 
-    /// The current network topology according to 
+    /// The current network topology according to
     pub current_topology: Topology,
 
     /// The sumeragi internal `WorldStateView`. This will probably morph
@@ -163,7 +163,7 @@ impl<F: FaultInjection> SumeragiWithFault<F> {
     fn broadcast_msg(&self, msg: impl Into<Message> + Send, topology: &Topology) {
         self.broadcast_msg_to(msg, topology.sorted_peers().iter());
     }
-    
+
     /// Connects or disconnects peers according to the current network topology.
     pub fn connect_peers(&self, topology: &Topology) {
         let peers_expected = {
@@ -1252,7 +1252,7 @@ fn sumeragi_init_listen_for_genesis<F>(
         std::thread::sleep(Duration::from_millis(50));
 
         if state_machine_guard.sumeragi_thread_should_exit {
-            info!("Sumeragi Thread has shut down.");            
+            info!("Sumeragi Thread has shut down.");
             return;
         }
 

@@ -29,7 +29,7 @@ pub struct Proof {
 }
 
 impl Proof {
-    /// 
+    ///
     pub fn signature_payload(&self) -> Hash {
         let mut buf = [0_u8; Hash::LENGTH + std::mem::size_of::<u64>()];
         buf[..Hash::LENGTH].copy_from_slice(self.latest_block_hash.as_ref());

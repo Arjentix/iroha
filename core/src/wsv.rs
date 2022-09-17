@@ -315,7 +315,7 @@ impl WorldStateView {
                     let _ = match event_type {
                         Event::Data(_) => {
                             let dangerous_reference = unsafe {
-                                let ptr : *const TriggerSet = &self.world.triggers; // TODO: #2757
+                                let ptr: *const TriggerSet = &self.world.triggers; // TODO: #2757
                                 &*ptr
                             };
 
@@ -335,9 +335,9 @@ impl WorldStateView {
                         }
                         Event::Pipeline(_) => {
                             let dangerous_reference = unsafe {
-                                let ptr : *const TriggerSet = &self.world.triggers; // TODO: #2757
+                                let ptr: *const TriggerSet = &self.world.triggers; // TODO: #2757
                                 &*ptr
-                            };                            
+                            };
 
                             dangerous_reference.pipeline_triggers.get(&id).map(|entry| {
                                 let action = entry.value();
@@ -355,7 +355,7 @@ impl WorldStateView {
                         }
                         Event::Time(_) => {
                             let dangerous_reference = unsafe {
-                                let ptr : *const TriggerSet = &self.world.triggers; // TODO: #2757
+                                let ptr: *const TriggerSet = &self.world.triggers; // TODO: #2757
                                 &*ptr
                             };
 
@@ -375,7 +375,7 @@ impl WorldStateView {
                         }
                         Event::ExecuteTrigger(_) => {
                             let dangerous_reference = unsafe {
-                                let ptr : *const TriggerSet = &self.world.triggers; // TODO: #2757
+                                let ptr: *const TriggerSet = &self.world.triggers; // TODO: #2757
                                 &*ptr
                             };
 
@@ -405,7 +405,7 @@ impl WorldStateView {
 
             for id in &succeed {
                 // Ignoring error if trigger has not `Repeats::Exact(_)` but something else
-                let _mod_repeats_res = self.world.triggers.mod_repeats(id, |n| 
+                let _mod_repeats_res = self.world.triggers.mod_repeats(id, |n| {
                     if n == 0 {
                         // Possible i.e. if one trigger burned it-self or another trigger, because we
                         // decrease the number of execution after successful execution
@@ -413,18 +413,14 @@ impl WorldStateView {
                     } else {
                         Ok(n - 1)
                     }
-                );
+                });
             }
 
             let triggers = &mut self.world.triggers;
-            triggers
-                .remove_zeros(&triggers.data_triggers);
-            triggers
-                .remove_zeros(&triggers.pipeline_triggers);
-            triggers
-                .remove_zeros(&triggers.time_triggers);
-            triggers
-                .remove_zeros(&triggers.by_call_triggers);
+            triggers.remove_zeros(&triggers.data_triggers);
+            triggers.remove_zeros(&triggers.pipeline_triggers);
+            triggers.remove_zeros(&triggers.time_triggers);
+            triggers.remove_zeros(&triggers.by_call_triggers);
 
             res
         };
