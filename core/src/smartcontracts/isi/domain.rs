@@ -228,7 +228,7 @@ pub mod isi {
         ) -> Result<(), Self::Error> {
             let domain_id = self.object_id;
 
-            let limits = wsv.config.domain_metadata_limits.clone();
+            let limits = wsv.config.domain_metadata_limits;
 
             wsv.modify_domain(&domain_id.clone(), |domain| {
                 domain

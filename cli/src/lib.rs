@@ -275,24 +275,28 @@ impl Iroha {
         let notify_shutdown = Arc::new(Notify::new());
 
         let queue = Arc::new(Queue::from_configuration(&config.queue));
-        let telemetry_started = Self::start_telemetry(telemetry, &config).await?;
+        if Self::start_telemetry(telemetry, &config).await? {
+            iroha_logger::info!("Telemetry started")
+        } else {
+            iroha_logger::error!("Telemetry did not start")
+        }
 
         let kura_thread_handler = Kura::start(Arc::clone(&kura));
 
         let sumeragi = Arc::new(
+            // TODO: No function needs 10 parameters. It should accept one struct.
             Sumeragi::from_configuration(
                 &config.sumeragi,
                 events_sender.clone(),
                 wsv,
                 transaction_validator,
-                telemetry_started,
                 genesis,
                 Arc::clone(&queue),
                 broker.clone(),
                 Arc::clone(&kura),
                 network_addr.clone(),
             )
-            .wrap_err("Failed to initialize Sumeragi.")?,
+            .wrap_err("Failed to initialize Sumeragi")?,
         );
 
         let sumeragi_relay = FromNetworkBaseRelay {

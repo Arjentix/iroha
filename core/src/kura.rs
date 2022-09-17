@@ -530,7 +530,6 @@ pub enum Error {
 #[cfg(test)]
 mod tests {
 
-    use iroha_actor::broker::Broker;
     use tempfile::TempDir;
 
     use super::*;

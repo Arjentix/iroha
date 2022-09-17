@@ -200,6 +200,8 @@ mod tests {
         Ok(World::with([domain], PeersIds::new()))
     }
 
+    // TODO: This doesn't need to be `async`
+    #[allow(clippy::unused_async)]
     async fn wsv_with_test_blocks_and_transactions(
         blocks: u64,
         valid_tx_per_block: usize,
@@ -228,8 +230,8 @@ mod tests {
             crate::VersionedAcceptedTransaction::from_transaction(tx, &huge_limits)?
         };
 
-        let mut transactions = vec![valid_tx.clone(); valid_tx_per_block];
-        transactions.append(&mut vec![invalid_tx.clone(); invalid_tx_per_block]);
+        let mut transactions = vec![valid_tx; valid_tx_per_block];
+        transactions.append(&mut vec![invalid_tx; invalid_tx_per_block]);
 
         let first_block = PendingBlock::new(transactions.clone(), vec![])
             .chain_first()
@@ -382,8 +384,7 @@ mod tests {
             max_wasm_size_bytes: 0,
         };
 
-        let va_tx =
-            crate::VersionedAcceptedTransaction::from_transaction(signed_tx.clone(), &tx_limits)?;
+        let va_tx = crate::VersionedAcceptedTransaction::from_transaction(signed_tx, &tx_limits)?;
 
         let mut block = PendingBlock::new(Vec::new(), Vec::new());
         block.transactions.push(va_tx.clone());

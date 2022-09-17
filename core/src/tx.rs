@@ -67,7 +67,7 @@ impl TransactionValidator {
         is_genesis: bool,
         wsv: &WorldStateView,
     ) -> Result<VersionedValidTransaction, VersionedRejectedTransaction> {
-        if let Err(rejection_reason) = self.validate_internal(tx.clone(), is_genesis, &wsv) {
+        if let Err(rejection_reason) = self.validate_internal(tx.clone(), is_genesis, wsv) {
             return Err(RejectedTransaction {
                 payload: tx.payload,
                 signatures: tx.signatures,
@@ -107,14 +107,14 @@ impl TransactionValidator {
         wsv: &WorldStateView,
     ) -> Result<(), TransactionRejectionReason> {
         let account_id = &tx.payload.account_id;
-        self.validate_signatures(&tx, is_genesis, wsv)?;
+        Self::validate_signatures(&tx, is_genesis, wsv)?;
 
         // Sanity check - should have been checked by now
         tx.check_limits(&self.transaction_limits)?;
 
         // WSV is cloned here so that instructions don't get applied to the blockchain
         // Therefore, this instruction execution validates before actually executing
-        let mut wsv = WorldStateView::clone(&wsv);
+        let wsv = WorldStateView::clone(wsv);
 
         if !wsv
             .domain(&account_id.domain_id)
@@ -145,7 +145,6 @@ impl TransactionValidator {
 
     /// Validate signatures for the given transaction
     fn validate_signatures(
-        &self,
         tx: &AcceptedTransaction,
         is_genesis: bool,
         wsv: &WorldStateView,
@@ -154,7 +153,7 @@ impl TransactionValidator {
             return Err(TransactionRejectionReason::UnexpectedGenesisAccountSignature);
         }
 
-        let option_reason = match tx.check_signature_condition(&wsv) {
+        let option_reason = match tx.check_signature_condition(wsv) {
             Ok(MustUse(true)) => None,
             Ok(MustUse(false)) => Some("Signature condition not satisfied.".to_owned()),
             Err(reason) => Some(reason.to_string()),
@@ -241,7 +240,7 @@ impl TransactionValidator {
             signatures,
         };
 
-        let mut wsv_cloned = wsv.clone();
+        let wsv_cloned = wsv.clone();
 
         // Validating the transaction it-self
         wsv_cloned

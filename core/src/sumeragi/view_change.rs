@@ -7,15 +7,13 @@
 )]
 use std::collections::HashSet;
 
-use derive_more::Display;
-use eyre::{Context, Result};
-use iroha_crypto::{Hash, HashOf, KeyPair, PublicKey, Signature, SignatureOf, SignaturesOf};
+use eyre::Result;
+use iroha_crypto::{Hash, HashOf, KeyPair, PublicKey, Signature};
 use iroha_data_model::prelude::PeerId;
-use iroha_macro::*;
 use iroha_schema::IntoSchema;
 use parity_scale_codec::{Decode, Encode};
 
-use crate::block::{EmptyChainHash, VersionedCommittedBlock, VersionedValidBlock};
+use crate::block::VersionedCommittedBlock;
 
 /// The proof of a view change. It needs to be signed by f+1 peers for proof to be valid and view change to happen.
 #[derive(Debug, Clone, Decode, Encode, IntoSchema)]
@@ -102,6 +100,9 @@ pub trait ProofChain {
     fn prune(&mut self, latest_block: &HashOf<VersionedCommittedBlock>);
 
     /// Attempt to insert a view chain proof into this `ProofChain`.
+    ///
+    /// # Errors
+    /// Implementation-dependent
     fn insert_proof(
         &mut self,
         peers: &HashSet<PeerId>,
@@ -139,6 +140,7 @@ impl ProofChain for Vec<Proof> {
         self.truncate(valid_count);
     }
 
+    #[allow(clippy::expect_used, clippy::unwrap_in_result)]
     fn insert_proof(
         &mut self,
         peers: &HashSet<PeerId>,
@@ -154,12 +156,12 @@ impl ProofChain for Vec<Proof> {
             return Err("Wrong view change index."); // We only care about the current view change that may or may not happen.
         }
         self.truncate(next_unfinished_view_change + 1);
-        if self.len() != next_unfinished_view_change + 1 {
-            self.push(new_proof.clone());
-        } else {
+        if self.len() == next_unfinished_view_change + 1 {
             self.last_mut()
                 .expect("size must always be more than zero")
                 .merge_signatures(&new_proof.signatures);
+        } else {
+            self.push(new_proof.clone());
         }
         Ok(())
     }

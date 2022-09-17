@@ -7,31 +7,15 @@
 )]
 #![allow(clippy::significant_drop_in_scrutinee)]
 
-use std::time::Duration;
-
-use eyre::{Result, WrapErr};
-use futures::stream::FuturesUnordered;
-use iroha_crypto::{HashOf, KeyPair, SignatureOf};
 use iroha_data_model::prelude::*;
 use iroha_logger::prelude::*;
 use iroha_macro::*;
 use iroha_p2p::Post;
-use iroha_schema::IntoSchema;
 use iroha_version::prelude::*;
 use parity_scale_codec::{Decode, Encode};
-use tokio::task;
 
-use super::{
-    fault::{FaultInjection, SumeragiWithFault},
-    view_change::{self, Proof, ProofChain},
-};
-use crate::{
-    block::BlockHeader,
-    genesis::GenesisNetworkTrait,
-    queue, send_event,
-    sumeragi::{NetworkMessage, Role, Sumeragi, Topology, VotingBlock},
-    VersionedAcceptedTransaction, VersionedCommittedBlock, VersionedValidBlock,
-};
+use super::view_change::{self, Proof};
+use crate::{sumeragi::NetworkMessage, VersionedAcceptedTransaction, VersionedValidBlock};
 
 declare_versioned_with_scale!(VersionedMessage 1..2, Debug, Clone, iroha_macro::FromVariant, iroha_actor::Message);
 
@@ -76,7 +60,7 @@ impl VersionedMessage {
     where
         I: IntoIterator<Item = &'itm PeerId> + Send,
     {
-        for peer_id in peers.into_iter() {
+        for peer_id in peers {
             self.clone().send_to(broker, peer_id);
         }
     }

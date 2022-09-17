@@ -12,6 +12,8 @@ use super::prelude::*;
 /// - update metadata
 /// - transfer, etc.
 pub mod isi {
+    use std::sync::Arc;
+
     use super::*;
 
     impl Execute for SetKeyValue<Asset, Name, Value> {
@@ -27,7 +29,7 @@ pub mod isi {
 
             assert_asset_type(&asset_id.definition_id, wsv, AssetValueType::Store)?;
             wsv.asset_or_insert(&asset_id, Metadata::new())?;
-            let asset_metadata_limits = wsv.config.asset_metadata_limits.clone();
+            let asset_metadata_limits = wsv.config.asset_metadata_limits;
 
             wsv.modify_asset(&asset_id, |asset| {
                 let store: &mut Metadata = asset
@@ -161,7 +163,7 @@ pub mod isi {
                 &asset_id,
                 <Self as AssetInstructionInfo>::DEFAULT_ASSET_VALUE,
             )?;
-            let metrics_arc = wsv.metrics.clone();
+            let metrics_arc = Arc::clone(&wsv.metrics);
             wsv.modify_asset(&asset_id, |asset| {
                 let quantity: &mut Self = asset
                     .try_as_mut()
@@ -199,7 +201,7 @@ pub mod isi {
                 wsv,
                 <Self as AssetInstructionInfo>::EXPECTED_VALUE_TYPE,
             )?;
-            let metrics_arc = wsv.metrics.clone();
+            let metrics_arc = Arc::clone(&wsv.metrics);
             wsv.modify_asset(&asset_id, |asset| {
                 let quantity: &mut Self = asset
                     .try_as_mut()
@@ -252,7 +254,7 @@ pub mod isi {
 
                 Ok(AssetEvent::Removed(transfer.source_id.clone()))
             })?;
-            let metrics_arc = wsv.metrics.clone();
+            let metrics_arc = Arc::clone(&wsv.metrics);
             wsv.modify_asset(&transfer.destination_id, |asset| {
                 let quantity: &mut Self = asset
                     .try_as_mut()

@@ -407,8 +407,9 @@ async fn handle_version(sumeragi: Arc<Sumeragi>) -> Json {
 }
 
 #[cfg(feature = "telemetry")]
-async fn handle_metrics(sumeragi: Arc<Sumeragi>, network: Addr<IrohaNetwork>) -> Result<String> {
-    if let Err(error) = sumeragi.update_metrics(network) {
+async fn handle_metrics(sumeragi: Arc<Sumeragi>, _network: Addr<IrohaNetwork>) -> Result<String> {
+    // TODO: Remove network.
+    if let Err(error) = sumeragi.update_metrics() {
         iroha_logger::error!(%error, "Error while calling sumeragi::update_metrics.");
     }
     sumeragi
@@ -419,8 +420,9 @@ async fn handle_metrics(sumeragi: Arc<Sumeragi>, network: Addr<IrohaNetwork>) ->
 }
 
 #[cfg(feature = "telemetry")]
-async fn handle_status(sumeragi: Arc<Sumeragi>, network: Addr<IrohaNetwork>) -> Result<Json> {
-    if let Err(error) = sumeragi.update_metrics(network) {
+async fn handle_status(sumeragi: Arc<Sumeragi>, _network: Addr<IrohaNetwork>) -> Result<Json> {
+    // TODO: remove network
+    if let Err(error) = sumeragi.update_metrics() {
         iroha_logger::error!(%error, "Error while calling sumeragi::update_metrics.");
     }
     let status = Status::from(&sumeragi.wsv_mutex_access().metrics);

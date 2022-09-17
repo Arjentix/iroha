@@ -5,7 +5,6 @@ use std::{collections::BTreeSet, str::FromStr as _, sync::Arc};
 use criterion::{criterion_group, criterion_main, Criterion};
 use iroha_core::{
     prelude::*,
-    sumeragi::view_change,
     tx::{AcceptedTransaction, TransactionValidator},
     wsv::World,
 };

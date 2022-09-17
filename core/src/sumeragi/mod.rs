@@ -7,14 +7,14 @@
     clippy::std_instead_of_alloc
 )]
 use std::{
-    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
+    collections::HashSet,
     fmt::{self, Debug, Formatter},
     marker::PhantomData,
     sync::Arc,
     time::{Duration, Instant},
 };
 
-use eyre::{eyre, Result};
+use eyre::{Result, WrapErr as _};
 use iroha_actor::{broker::Broker, Addr};
 use iroha_config::sumeragi::Configuration;
 use iroha_crypto::{HashOf, KeyPair, SignatureOf};
@@ -22,7 +22,6 @@ use iroha_data_model::prelude::*;
 use iroha_logger::prelude::*;
 use iroha_p2p::{ConnectPeer, DisconnectPeer};
 use network_topology::{Role, Topology};
-use rand::prelude::SliceRandom;
 
 use crate::{genesis::GenesisNetwork, handler::ThreadHandler};
 
@@ -41,11 +40,10 @@ use self::{
     view_change::{Proof, ProofChain as ViewChangeProofs},
 };
 use crate::{
-    block::{BlockHeader, ChainedBlock, EmptyChainHash, VersionedPendingBlock},
+    block::{EmptyChainHash, VersionedPendingBlock},
     kura::Kura,
     prelude::*,
     queue::Queue,
-    send_event,
     tx::TransactionValidator,
     EventsSender, IrohaNetwork, NetworkMessage, VersionedValidBlock,
 };
@@ -74,7 +72,6 @@ impl Sumeragi {
         events_sender: EventsSender,
         wsv: WorldStateView,
         transaction_validator: TransactionValidator,
-        telemetry_started: bool,
         genesis_network: Option<GenesisNetwork>,
         queue: Arc<Queue>,
         broker: Broker,
@@ -106,7 +103,7 @@ impl Sumeragi {
                 key_pair: configuration.key_pair.clone(),
                 peer_id: configuration.peer_id.clone(),
                 events_sender,
-                wsv_for_public_use: std::sync::Mutex::new(wsv),
+                wsv: std::sync::Mutex::new(wsv),
                 commit_time: Duration::from_millis(configuration.commit_time_limit_ms),
                 block_time: Duration::from_millis(configuration.block_time_ms),
                 transaction_limits: configuration.transaction_limits,
@@ -129,19 +126,28 @@ impl Sumeragi {
     }
 
     /// Update the metrics on the world state view.
-    pub fn update_metrics(&self, network: Addr<IrohaNetwork>) -> Result<()> {
-        use eyre::WrapErr;
-        use thiserror::Error;
+    ///
+    /// # Errors
+    /// - Domains fail to compose
+    ///
+    /// # Panics
+    /// - If either mutex is poisoned
+    #[allow(clippy::expect_used, clippy::unwrap_in_result)]
+    pub fn update_metrics(&self) -> Result<()> {
         let online_peers_count: u64 = self
             .internal
             .current_online_peers
             .lock()
-            .unwrap()
+            .expect("Failed to lock `current_online_peers` for `update_metrics`")
             .len()
             .try_into()
             .expect("casting usize to u64");
 
-        let mut wsv_guard = self.internal.wsv_for_public_use.lock().unwrap();
+        let wsv_guard = self
+            .internal
+            .wsv
+            .lock()
+            .expect("Failed to lock on `update_metrics`. Mutex poisoned");
 
         #[allow(clippy::cast_possible_truncation)]
         if let Some(timestamp) = wsv_guard.genesis_timestamp() {
@@ -166,39 +172,43 @@ impl Sumeragi {
     }
 
     /// Get latest block hash for use by the block synchronization subsystem.
+    #[allow(clippy::expect_used)]
     pub fn latest_block_hash_for_use_by_block_sync(&self) -> HashOf<VersionedCommittedBlock> {
-        self.internal
+        *self
+            .internal
             .latest_block_hash_for_use_by_block_sync
             .lock()
-            .unwrap()
-            .clone()
+            .expect("Mutex on internal WSV poisoned in `latest_block_hash_for_use_by_block_sync`")
     }
 
     /// Get an array of blocks after the block identified by `block_hash`. Returns
     /// an empty array if the specified block could not be found.
+    #[allow(clippy::expect_used)]
     pub fn blocks_after_hash(
         &self,
         block_hash: HashOf<VersionedCommittedBlock>,
     ) -> Vec<VersionedCommittedBlock> {
         self.internal
-            .wsv_for_public_use
+            .wsv
             .lock()
-            .unwrap()
+            .expect("Mutex on internal WSV poisoned in `blocks_after_hash`")
             .blocks_after_hash(block_hash)
     }
 
-    /// Get an array of blocks from `block_height`. (blocks[block_height], blocks[block_height + 1] et cetera.)
+    /// Get an array of blocks from `block_height`. (`blocks[block_height]`, `blocks[block_height + 1]` etc.)
+    #[allow(clippy::expect_used)]
     pub fn blocks_from_height(&self, block_height: usize) -> Vec<VersionedCommittedBlock> {
         self.internal
-            .wsv_for_public_use
+            .wsv
             .lock()
-            .unwrap()
+            .expect("Mutex on internal WSV poisoned in `blocks_from_height`.")
             .blocks_from_height(block_height)
     }
 
     /// Get a random online peer for use in block synchronization.
+    #[allow(clippy::expect_used, clippy::unwrap_in_result)]
     pub fn get_random_peer_for_block_sync(&self) -> Option<Peer> {
-        use rand::{prelude::SliceRandom, RngCore, SeedableRng};
+        use rand::{RngCore, SeedableRng};
 
         let rng = &mut rand::rngs::StdRng::from_entropy();
         let peers = self
@@ -210,7 +220,7 @@ impl Sumeragi {
             .map(|peer| Peer::new((*peer).clone()))
             .collect::<Vec<Peer>>();
         if peers.is_empty() {
-            return None;
+            None
         } else {
             let mut sorted_peers = peers;
             sorted_peers.sort();
@@ -222,19 +232,25 @@ impl Sumeragi {
     /// If you intend to do anything substantial you should clone
     /// and release the lock. This is because no blocks can be produced
     /// while this lock is held.
+    // TODO: Return result.
+    #[allow(clippy::expect_used)]
     pub fn wsv_mutex_access(&self) -> std::sync::MutexGuard<WorldStateView> {
-        self.internal.wsv_for_public_use.lock().unwrap()
+        self.internal
+            .wsv
+            .lock()
+            .expect("World state view Mutex access failed")
     }
 
     /// Start the sumeragi thread for this sumeragi instance.
+    #[allow(clippy::expect_used)]
     pub fn initialize_and_start_thread(
         sumeragi: Arc<Self>,
         latest_block_hash: HashOf<VersionedCommittedBlock>,
         latest_block_height: u64,
     ) -> ThreadHandler {
-        let sumeragi2 = sumeragi.clone();
+        let sumeragi2 = Arc::clone(&sumeragi);
         let thread_handle = std::thread::Builder::new()
-            .name("sumeragi thread".to_string())
+            .name("sumeragi thread".to_owned())
             .spawn(move || {
                 fault::run_sumeragi_main_loop(
                     &sumeragi.internal,
@@ -257,6 +273,7 @@ impl Sumeragi {
     }
 
     /// Update the sumeragi internal online peers list.
+    #[allow(clippy::expect_used)]
     pub fn update_online_peers(&self, online_peers: Vec<PeerId>) {
         *self
             .internal
@@ -266,6 +283,7 @@ impl Sumeragi {
     }
 
     /// Deposit a sumeragi network message.
+    #[allow(clippy::expect_used)]
     pub fn incoming_message(&self, msg: Message) {
         if self
             .internal

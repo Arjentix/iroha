@@ -408,6 +408,29 @@ impl Set {
         res
     }
 
+    fn apply_f<F, E>(
+        succeed: &mut Vec<Id>,
+        errors: &mut Vec<E>,
+        id: Id,
+        action: &dyn ActionTrait,
+        event: Event,
+        f: F,
+    ) where
+        F: Fn(&dyn ActionTrait, Event) -> std::result::Result<(), E> + Send + Copy,
+        E: Send + Sync,
+    {
+        if let Repeats::Exactly(atomic) = action.repeats() {
+            if atomic.get() == 0 {
+                return;
+            }
+        }
+
+        match f(action, event) {
+            Ok(()) => succeed.push(id),
+            Err(err) => errors.push(err),
+        }
+    }
+
     /// Map `f` to every trigger from `self.matched_ids`
     ///
     /// Returns vector of successfully executed triggers
@@ -420,29 +443,6 @@ impl Set {
         let mut succeed = Vec::new();
         let mut errors = Vec::new();
 
-        fn apply_f<F, E>(
-            succeed: &mut Vec<Id>,
-            errors: &mut Vec<E>,
-            id: Id,
-            action: &dyn ActionTrait,
-            event: Event,
-            f: F,
-        ) where
-            F: Fn(&dyn ActionTrait, Event) -> std::result::Result<(), E> + Send + Copy,
-            E: Send + Sync,
-        {
-            if let Repeats::Exactly(atomic) = action.repeats() {
-                if atomic.get() == 0 {
-                    return;
-                }
-            }
-
-            match f(action, event) {
-                Ok(()) => succeed.push(id),
-                Err(err) => errors.push(err),
-            }
-        }
-
         // Cloning and clearing `self.ids_write` so that `handle_` call won't deadlock
         let mut matched_ids = Vec::new();
         std::mem::swap(&mut matched_ids, &mut self.matched_ids);
@@ -451,22 +451,18 @@ impl Set {
             // Ignoring `None` variant cause this means that action was deleted after `handle_`
             // call and before `inspect_matching()` call
             match event {
-                Event::Data(_) => self
-                    .data_triggers
-                    .get(&id)
-                    .map(|entry| apply_f(&mut succeed, &mut errors, id, entry.value(), event, f)),
-                Event::Pipeline(_) => self
-                    .pipeline_triggers
-                    .get(&id)
-                    .map(|entry| apply_f(&mut succeed, &mut errors, id, entry.value(), event, f)),
-                Event::Time(_) => self
-                    .time_triggers
-                    .get(&id)
-                    .map(|entry| apply_f(&mut succeed, &mut errors, id, entry.value(), event, f)),
-                Event::ExecuteTrigger(_) => self
-                    .by_call_triggers
-                    .get(&id)
-                    .map(|entry| apply_f(&mut succeed, &mut errors, id, entry.value(), event, f)),
+                Event::Data(_) => self.data_triggers.get(&id).map(|entry| {
+                    Self::apply_f(&mut succeed, &mut errors, id, entry.value(), event, f)
+                }),
+                Event::Pipeline(_) => self.pipeline_triggers.get(&id).map(|entry| {
+                    Self::apply_f(&mut succeed, &mut errors, id, entry.value(), event, f)
+                }),
+                Event::Time(_) => self.time_triggers.get(&id).map(|entry| {
+                    Self::apply_f(&mut succeed, &mut errors, id, entry.value(), event, f)
+                }),
+                Event::ExecuteTrigger(_) => self.by_call_triggers.get(&id).map(|entry| {
+                    Self::apply_f(&mut succeed, &mut errors, id, entry.value(), event, f)
+                }),
             };
         }
 

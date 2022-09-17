@@ -21,7 +21,7 @@ use iroha_data_model::prelude::*;
 use iroha_logger::prelude::*;
 use iroha_primitives::small::SmallVec;
 use iroha_telemetry::metrics::Metrics;
-use tokio::{sync::broadcast, task};
+use tokio::sync::broadcast;
 
 use crate::{
     block::Chain,
@@ -281,7 +281,7 @@ impl WorldStateView {
     /// you likely have data corruption.
     /// - If trigger execution fails
     /// - If timestamp conversion to `u64` fails
-    #[allow(clippy::expect_used)]
+    #[allow(clippy::too_many_lines)]
     pub fn apply(&mut self, block: VersionedCommittedBlock) -> Result<()> {
         let time_event = self.create_time_event(block.as_v1())?;
         self.produce_event(Event::Time(time_event));
@@ -311,7 +311,6 @@ impl WorldStateView {
                 for (event_type, id) in matched_ids {
                     // Ignoring `None` variant cause this means that action was deleted after `handle_`
                     // call and before `inspect_matching()` call
-                    #[allow(unsafe_code)]
                     let _ = match event_type {
                         Event::Data(_) => {
                             let dangerous_reference = unsafe {
@@ -593,7 +592,7 @@ impl WorldStateView {
                 }
             }
         }
-        return iterator.map(|b| b.clone()).collect();
+        iterator.map(|b| b.clone()).collect()
     }
 
     /// Get `World` and pass it to closure to modify it
@@ -767,8 +766,11 @@ impl WorldStateView {
     }
 
     /// Initializes WSV with the blocks from block storage.
+    #[allow(clippy::expect_used)]
     pub fn init(&mut self, blocks: Vec<VersionedCommittedBlock>) {
         for block in blocks {
+            // If we cannot apply the block, it is preferred to signal
+            // failure and have the end user figure out what's wrong.
             self.apply(block).expect("Initialization of WSV failed.");
         }
     }
