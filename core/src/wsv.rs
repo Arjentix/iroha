@@ -290,139 +290,10 @@ impl WorldStateView {
 
         self.world.triggers.handle_time_event(time_event);
 
-        /*
-        was previously the following:
         let res = self
             .world
             .triggers
-            .inspect_matched(|action, event| -> Result<()> { self.process_trigger(action, event) })
-            .await;
-
-        now is: */
-        let res = {
-            let (succeed, res) = {
-                let mut succeed = Vec::new();
-                let mut errors = Vec::new();
-
-                // Cloning and clearing `self.ids_write` so that `handle_` call won't deadlock
-                let mut matched_ids = Vec::new();
-                std::mem::swap(&mut matched_ids, &mut self.world.triggers.matched_ids);
-
-                for (event_type, id) in matched_ids {
-                    // Ignoring `None` variant cause this means that action was deleted after `handle_`
-                    // call and before `inspect_matching()` call
-                    let _ = match event_type {
-                        Event::Data(_) => {
-                            let dangerous_reference = unsafe {
-                                let ptr: *const TriggerSet = &self.world.triggers; // TODO: #2757
-                                &*ptr
-                            };
-
-                            dangerous_reference.data_triggers.get(&id).map(|entry| {
-                                let action = entry.value();
-                                if let Repeats::Exactly(atomic) = action.repeats() {
-                                    if atomic.get() == 0 {
-                                        return;
-                                    }
-                                }
-
-                                match self.process_trigger(action, event_type) {
-                                    Ok(()) => succeed.push(id),
-                                    Err(err) => errors.push(err),
-                                }
-                            })
-                        }
-                        Event::Pipeline(_) => {
-                            let dangerous_reference = unsafe {
-                                let ptr: *const TriggerSet = &self.world.triggers; // TODO: #2757
-                                &*ptr
-                            };
-
-                            dangerous_reference.pipeline_triggers.get(&id).map(|entry| {
-                                let action = entry.value();
-                                if let Repeats::Exactly(atomic) = action.repeats() {
-                                    if atomic.get() == 0 {
-                                        return;
-                                    }
-                                }
-
-                                match self.process_trigger(action, event_type) {
-                                    Ok(()) => succeed.push(id),
-                                    Err(err) => errors.push(err),
-                                }
-                            })
-                        }
-                        Event::Time(_) => {
-                            let dangerous_reference = unsafe {
-                                let ptr: *const TriggerSet = &self.world.triggers; // TODO: #2757
-                                &*ptr
-                            };
-
-                            dangerous_reference.time_triggers.get(&id).map(|entry| {
-                                let action = entry.value();
-                                if let Repeats::Exactly(atomic) = action.repeats() {
-                                    if atomic.get() == 0 {
-                                        return;
-                                    }
-                                }
-
-                                match self.process_trigger(action, event_type) {
-                                    Ok(()) => succeed.push(id),
-                                    Err(err) => errors.push(err),
-                                }
-                            })
-                        }
-                        Event::ExecuteTrigger(_) => {
-                            let dangerous_reference = unsafe {
-                                let ptr: *const TriggerSet = &self.world.triggers; // TODO: #2757
-                                &*ptr
-                            };
-
-                            dangerous_reference.by_call_triggers.get(&id).map(|entry| {
-                                let action = entry.value();
-                                if let Repeats::Exactly(atomic) = action.repeats() {
-                                    if atomic.get() == 0 {
-                                        return;
-                                    }
-                                }
-
-                                match self.process_trigger(action, event_type) {
-                                    Ok(()) => succeed.push(id),
-                                    Err(err) => errors.push(err),
-                                }
-                            })
-                        }
-                    };
-                }
-
-                if errors.is_empty() {
-                    (succeed, Ok(()))
-                } else {
-                    (succeed, Err(errors))
-                }
-            };
-
-            for id in &succeed {
-                // Ignoring error if trigger has not `Repeats::Exact(_)` but something else
-                let _mod_repeats_res = self.world.triggers.mod_repeats(id, |n| {
-                    if n == 0 {
-                        // Possible i.e. if one trigger burned it-self or another trigger, because we
-                        // decrease the number of execution after successful execution
-                        Ok(0)
-                    } else {
-                        Ok(n - 1)
-                    }
-                });
-            }
-
-            let triggers = &mut self.world.triggers;
-            triggers.remove_zeros(&triggers.data_triggers);
-            triggers.remove_zeros(&triggers.pipeline_triggers);
-            triggers.remove_zeros(&triggers.time_triggers);
-            triggers.remove_zeros(&triggers.by_call_triggers);
-
-            res
-        };
+            .inspect_matched(|action, event| -> Result<()> { self.process_trigger(action, event) });
 
         if let Err(errors) = res {
             warn!(
@@ -434,9 +305,6 @@ impl WorldStateView {
         self.blocks.push(block);
         self.block_commit_metrics_update_callback();
         self.new_block_notifier.send_replace(());
-
-        // TODO: On block commit triggers
-        // TODO: Pass self.events to the next block
 
         Ok(())
     }
