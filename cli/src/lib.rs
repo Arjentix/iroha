@@ -269,8 +269,6 @@ impl Iroha {
         wsv_mutable.init(kura.init()?);
 
         let wsv = wsv_mutable;
-        let latest_block_hash = wsv.latest_block_hash();
-        let latest_block_height = wsv.height();
 
         let notify_shutdown = Arc::new(Notify::new());
 
@@ -290,7 +288,6 @@ impl Iroha {
                 events_sender.clone(),
                 wsv,
                 transaction_validator,
-                genesis,
                 Arc::clone(&queue),
                 broker.clone(),
                 Arc::clone(&kura),
@@ -307,11 +304,8 @@ impl Iroha {
         .await
         .expect_running();
 
-        let sumeragi_thread_handler = Sumeragi::initialize_and_start_thread(
-            sumeragi.clone(),
-            latest_block_hash,
-            latest_block_height,
-        );
+        let sumeragi_thread_handler =
+            Sumeragi::initialize_and_start_thread(sumeragi.clone(), genesis);
 
         let block_sync = BlockSynchronizer::from_configuration(
             &config.block_sync,

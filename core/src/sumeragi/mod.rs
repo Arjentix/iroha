@@ -59,6 +59,7 @@ trait Consensus {
 #[derive(Debug)]
 pub struct Sumeragi {
     internal: SumeragiWithFault<NoFault>,
+    config: Configuration,
 }
 
 impl Sumeragi {
@@ -72,29 +73,11 @@ impl Sumeragi {
         events_sender: EventsSender,
         wsv: WorldStateView,
         transaction_validator: TransactionValidator,
-        genesis_network: Option<GenesisNetwork>,
         queue: Arc<Queue>,
         broker: Broker,
         kura: Arc<Kura>,
         network: Addr<IrohaNetwork>,
     ) -> Result<Self> {
-        let network_topology = Topology::builder()
-            .at_block(EmptyChainHash::default().into())
-            .with_peers(configuration.trusted_peers.peers.clone())
-            .build(0)?;
-
-        let sumeragi_state_machine_data = SumeragiStateMachineData {
-            genesis_network,
-            latest_block_hash: Hash::zeroed().typed(),
-            latest_block_height: 0,
-            current_topology: network_topology,
-
-            wsv: wsv.clone(),
-            transaction_cache: Vec::new(),
-
-            sumeragi_thread_should_exit: false,
-        };
-
         let (incoming_message_sender, incoming_message_receiver) =
             std::sync::mpsc::sync_channel(250);
 
@@ -116,12 +99,12 @@ impl Sumeragi {
                 gossip_batch_size: configuration.gossip_batch_size,
                 gossip_period: Duration::from_millis(configuration.gossip_period_ms),
 
-                sumeragi_state_machine_data: Mutex::new(sumeragi_state_machine_data),
                 current_online_peers: Mutex::new(Vec::new()),
                 latest_block_hash_for_use_by_block_sync: Mutex::new(Hash::zeroed().typed()),
                 incoming_message_sender: Mutex::new(incoming_message_sender),
                 incoming_message_receiver: Mutex::new(incoming_message_receiver),
             },
+            config: configuration.clone(),
         })
     }
 
@@ -245,28 +228,55 @@ impl Sumeragi {
     #[allow(clippy::expect_used)]
     pub fn initialize_and_start_thread(
         sumeragi: Arc<Self>,
-        latest_block_hash: HashOf<VersionedCommittedBlock>,
-        latest_block_height: u64,
+        genesis_network: Option<GenesisNetwork>,
     ) -> ThreadHandler {
-        let sumeragi2 = Arc::clone(&sumeragi);
+        let wsv = sumeragi.internal.wsv.lock().unwrap().clone();
+
+        let latest_block_height = wsv.height();
+        let latest_block_hash = wsv.latest_block_hash();
+
+        let current_topology =
+            if latest_block_height != 0 && latest_block_hash != Hash::zeroed().typed() {
+                Topology::builder()
+                    .at_block(latest_block_hash)
+                    .with_peers(wsv.peers().iter().map(|peer| peer.id().clone()).collect())
+                    .build(0)
+                    .expect("Should be able to reconstruct topology from `wsv`")
+            } else {
+                assert!(sumeragi.config.trusted_peers.peers.len() >= 1);
+                Topology::builder()
+                    .at_block(EmptyChainHash::default().into())
+                    .with_peers(sumeragi.config.trusted_peers.peers.clone())
+                    .build(0)
+                    .unwrap()
+            };
+
+        let sumeragi_state_machine_data = SumeragiStateMachineData {
+            genesis_network,
+            latest_block_hash,
+            latest_block_height,
+            current_topology,
+
+            wsv,
+            transaction_cache: Vec::new(),
+        };
+
+        // Oneshot channel to allow forcefully stopping the thread.
+        let (shutdown_sender, shutdown_receiver) = tokio::sync::oneshot::channel();
+
         let thread_handle = std::thread::Builder::new()
             .name("sumeragi thread".to_owned())
             .spawn(move || {
                 fault::run_sumeragi_main_loop(
                     &sumeragi.internal,
-                    latest_block_hash,
-                    latest_block_height,
+                    sumeragi_state_machine_data,
+                    shutdown_receiver,
                 );
             })
             .expect("Sumeragi thread spawn should not fail.");
 
         let shutdown = move || {
-            sumeragi2
-                .internal
-                .sumeragi_state_machine_data
-                .lock()
-                .expect("lock to stop sumeragi thread")
-                .sumeragi_thread_should_exit = true;
+            let _result = shutdown_sender.send(());
         };
 
         ThreadHandler::new(Box::new(shutdown), thread_handle)

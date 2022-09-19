@@ -88,8 +88,6 @@ where
     /// The time between gossiping. More frequent gossiping shortens
     /// the time to sync, but can overload the network.
     pub(crate) gossip_period: Duration,
-    /// The internal state that is being used by Sumeragi.
-    pub sumeragi_state_machine_data: Mutex<SumeragiStateMachineData>,
     /// [`PeerId`]s of the peers that are currently online.
     pub current_online_peers: Mutex<Vec<PeerId>>,
     /// Hash of the latest block
@@ -141,8 +139,6 @@ pub struct SumeragiStateMachineData {
     /// would need to use unsafe to implement the fast pruning on the
     /// array.
     pub transaction_cache: Vec<Option<VersionedAcceptedTransaction>>,
-    /// Should the sumeragi thread terminate?
-    pub sumeragi_thread_should_exit: bool,
 }
 
 impl<F: FaultInjection> SumeragiWithFault<F> {
@@ -355,13 +351,13 @@ fn request_view_change<F>(
     );
 }
 
-#[instrument(skip(initial_latest_block, initial_block_height))]
+#[instrument(skip(sumeragi, state_machine_guard))]
 #[allow(clippy::expect_used)]
 /// Execute the main loop of [`SumeragiWithFault`]
 pub fn run_sumeragi_main_loop<F>(
     sumeragi: &SumeragiWithFault<F>,
-    initial_latest_block: HashOf<VersionedCommittedBlock>,
-    initial_block_height: u64,
+    mut state_machine_guard: SumeragiStateMachineData,
+    mut shutdown_receiver: tokio::sync::oneshot::Receiver<()>,
 ) where
     F: FaultInjection,
 {
@@ -370,51 +366,27 @@ pub fn run_sumeragi_main_loop<F>(
         .lock()
         .expect("lock on reciever");
 
-    if initial_block_height != 0 && initial_latest_block != Hash::zeroed().typed() {
+    if state_machine_guard.latest_block_height != 0
+        && state_machine_guard.latest_block_hash != Hash::zeroed().typed()
+    {
         // Normal startup
-
-        let mut state_machine_guard = sumeragi
-            .sumeragi_state_machine_data
-            .lock()
-            .expect("Lock on state machine in `main_loop`");
-
-        state_machine_guard.latest_block_hash = initial_latest_block;
-        state_machine_guard.latest_block_height = initial_block_height;
-        state_machine_guard.current_topology = Topology::builder()
-            .at_block(state_machine_guard.latest_block_hash)
-            .with_peers(
-                state_machine_guard
-                    .wsv
-                    .peers()
-                    .iter()
-                    .map(|peer| peer.id().clone())
-                    .collect(),
-            )
-            .build(0)
-            .expect("Should be able to reconstruct topology from `wsv`");
+        // Aka, we don't have to do anything.
     } else {
-        // We need to perform a round of some form
-        sumeragi
-            .sumeragi_state_machine_data
-            .lock()
-            .expect("take lock")
-            .genesis_network
-            .take()
-            .map_or_else(
-                || {
-                    sumeragi_init_listen_for_genesis(sumeragi, &mut incoming_message_receiver);
-                },
-                |genesis_network| {
-                    sumeragi_init_commit_genesis(sumeragi, genesis_network);
-                },
+        // We don't have the genesis block.
+        // We need to perform a round of some form.
+        if let Some(genesis_network) = state_machine_guard.genesis_network.take() {
+            sumeragi_init_commit_genesis(sumeragi, &mut state_machine_guard, genesis_network);
+        } else {
+            sumeragi_init_listen_for_genesis(
+                sumeragi,
+                &mut state_machine_guard,
+                &mut incoming_message_receiver,
+                &mut shutdown_receiver,
             );
+        }
     }
 
     {
-        let state_machine_guard = sumeragi
-            .sumeragi_state_machine_data
-            .lock()
-            .expect("Mutex poisoned.");
         assert!(state_machine_guard.latest_block_height >= 1);
         assert_eq!(
             state_machine_guard.latest_block_hash,
@@ -441,6 +413,11 @@ pub fn run_sumeragi_main_loop<F>(
     let mut old_latest_block_height = 0;
     let mut maybe_incoming_message = None;
     loop {
+        if shutdown_receiver.try_recv().is_ok() {
+            info!("Sumeragi Thread is being shutdown shut down.");
+            return;
+        }
+
         if should_sleep {
             let span = span!(Level::TRACE, "Sumeragi Main Thread Sleep");
             let _enter = span.enter();
@@ -449,24 +426,6 @@ pub fn run_sumeragi_main_loop<F>(
         }
         let span_for_sumeragi_cycle = span!(Level::TRACE, "Sumeragi Main Thread Cycle");
         let _enter_for_sumeragi_cycle = span_for_sumeragi_cycle.enter();
-
-        let mut state_machine_guard = {
-            let span_for_sumeragi_guard_lock = span!(
-                Level::TRACE,
-                "Sumeragi Main Thread Acquire state machine data lock."
-            );
-            let _enter_for_sumeragi_guard_lock = span_for_sumeragi_guard_lock.enter();
-
-            let state_machine_guard = sumeragi
-                .sumeragi_state_machine_data
-                .lock()
-                .expect("Poisoned mutex");
-            if state_machine_guard.sumeragi_thread_should_exit {
-                info!("Sumeragi Thread has Shutdown");
-                return;
-            }
-            state_machine_guard
-        };
 
         sumeragi.connect_peers(&state_machine_guard.current_topology);
 
@@ -1183,20 +1142,22 @@ pub fn run_sumeragi_main_loop<F>(
 }
 
 #[allow(clippy::expect_used)]
-fn sumeragi_init_commit_genesis<F>(sumeragi: &SumeragiWithFault<F>, genesis_network: GenesisNetwork)
-where
+fn sumeragi_init_commit_genesis<F>(
+    sumeragi: &SumeragiWithFault<F>,
+    state_machine_guard: &mut SumeragiStateMachineData,
+    genesis_network: GenesisNetwork,
+) where
     F: FaultInjection,
 {
     std::thread::sleep(Duration::from_millis(250));
-    let mut state_machine_guard = sumeragi
-        .sumeragi_state_machine_data
-        .lock()
-        .expect("take lock");
 
     iroha_logger::info!("Initializing iroha using the genesis block.");
 
-    state_machine_guard.latest_block_height = 0;
-    state_machine_guard.latest_block_hash = Hash::zeroed().typed();
+    assert_eq!(state_machine_guard.latest_block_height, 0);
+    assert_eq!(
+        state_machine_guard.latest_block_hash,
+        Hash::zeroed().typed()
+    );
 
     let transactions = genesis_network.transactions;
     // Don't start genesis round. Instead just commit the genesis block.
@@ -1229,7 +1190,7 @@ where
                 BlockCommitted::from(signed_block.clone()),
                 &state_machine_guard.current_topology,
             );
-            block_commit(sumeragi, signed_block, &mut state_machine_guard);
+            block_commit(sumeragi, signed_block, state_machine_guard);
         }
     }
 }
@@ -1237,15 +1198,13 @@ where
 #[allow(clippy::expect_used, clippy::panic)]
 fn sumeragi_init_listen_for_genesis<F>(
     sumeragi: &SumeragiWithFault<F>,
+    state_machine_guard: &mut SumeragiStateMachineData,
     incoming_message_receiver: &mut mpsc::Receiver<Message>,
+    shutdown_receiver: &mut tokio::sync::oneshot::Receiver<()>,
 ) where
     F: FaultInjection,
 {
     trace!("Start listen for genesis.");
-    let mut state_machine_guard = sumeragi
-        .sumeragi_state_machine_data
-        .lock()
-        .expect("take lock");
 
     assert!(
         state_machine_guard.current_topology.is_consensus_required(),
@@ -1263,8 +1222,8 @@ fn sumeragi_init_listen_for_genesis<F>(
         sumeragi.connect_peers(&state_machine_guard.current_topology);
         std::thread::sleep(Duration::from_millis(50));
 
-        if state_machine_guard.sumeragi_thread_should_exit {
-            info!("Sumeragi Thread has shut down.");
+        if shutdown_receiver.try_recv().is_ok() {
+            info!("Sumeragi Thread is being shutdown shut down.");
             return;
         }
 
@@ -1291,7 +1250,7 @@ fn sumeragi_init_listen_for_genesis<F>(
                             continue;
                         }
 
-                        block_commit(sumeragi, block, &mut state_machine_guard);
+                        block_commit(sumeragi, block, state_machine_guard);
                         info!("Genesis block received and committed.");
                         return;
                     }
