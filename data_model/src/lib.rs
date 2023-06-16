@@ -1184,6 +1184,10 @@ macro_rules! from_and_try_from_value_idbox {
                     Value::Id(IdBox::$variant(id))
                 }
             }
+
+            impl AssociatedConstant<ValueKind> for $ty {
+                const VALUE: ValueKind = ValueKind::Id;
+            }
         )*
     };
 }
@@ -1222,6 +1226,10 @@ macro_rules! from_and_try_from_value_identifiablebox {
                     Value::Identifiable(IdentifiableBox::$variant(Box::new(id)))
                 }
             }
+
+            impl AssociatedConstant<ValueKind> for $ty {
+                const VALUE: ValueKind = ValueKind::Identifiable;
+            }
         )*
     };
 }
@@ -1244,6 +1252,10 @@ macro_rules! from_and_try_from_value_identifiable {
                 fn from(id: $ty) -> Self {
                     Value::Identifiable(IdentifiableBox::$variant(id))
                 }
+            }
+
+            impl AssociatedConstant<ValueKind> for $ty {
+                const VALUE: ValueKind = ValueKind::Identifiable;
             }
         )*
     };
