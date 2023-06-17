@@ -7,6 +7,7 @@ use iroha_client::client;
 use iroha_crypto::{KeyPair, PublicKey};
 use iroha_data_model::prelude::*;
 use iroha_primitives::fixed::Fixed;
+use parity_scale_codec::Encode as _;
 use test_network::*;
 
 use super::Configuration;
@@ -259,8 +260,10 @@ fn find_rate_and_make_exchange_isi_should_succeed() {
 
     let grant_alice_asset_transfer_permission = |asset_id: AssetId, owner_keypair: KeyPair| {
         let allow_alice_to_transfer_asset = GrantBox::new(
-            PermissionToken::new("can_transfer_user_asset".parse().expect("Valid"))
-                .with_params([("asset_id".parse().expect("Valid"), asset_id.clone().into())]),
+            PermissionToken {
+                definition_id: "CanTransferUserAsset".to_owned(),
+                payload: asset_id.encode(),
+            },
             alice_id.clone(),
         );
 

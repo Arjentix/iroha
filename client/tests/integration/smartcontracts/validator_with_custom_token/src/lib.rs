@@ -7,11 +7,15 @@
 
 extern crate alloc;
 
+use alloc::{format, string::String};
+
+use iroha_schema::IntoSchema;
 use iroha_validator::{
     data_model::evaluate::{EvaluationError, ExpressionEvaluator},
     permission::Token as _,
     prelude::*,
 };
+use parity_scale_codec::{Decode, Encode};
 
 #[cfg(not(test))]
 extern crate panic_halt;
@@ -22,9 +26,9 @@ mod token {
     use super::*;
 
     /// Token to identify if user can (un-)register domains.
-    #[derive(Token, ValidateGrantRevoke)]
+    #[derive(Token, ValidateGrantRevoke, Decode, Encode, IntoSchema)]
     #[validate(iroha_validator::permission::OnlyGenesis)]
-    pub struct CanControlDomainsLives;
+    pub struct CanControlDomainLives;
 }
 
 struct CustomValidator(DefaultValidator);
@@ -38,7 +42,7 @@ macro_rules! delegate {
 }
 
 impl CustomValidator {
-    const CAN_CONTROL_DOMAIN_LIVES: token::CanControlDomainsLives = token::CanControlDomainsLives;
+    const CAN_CONTROL_DOMAIN_LIVES: token::CanControlDomainLives = token::CanControlDomainLives;
 }
 
 impl Visit for CustomValidator {
@@ -138,7 +142,7 @@ impl Validate for CustomValidator {
             tokens.remove(pos);
         }
 
-        tokens.push(token::CanControlDomainsLives::definition());
+        tokens.push(token::CanControlDomainLives::definition());
         tokens
     }
 

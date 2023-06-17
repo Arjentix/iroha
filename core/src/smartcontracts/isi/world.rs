@@ -112,17 +112,6 @@ pub mod isi {
         fn execute(self, authority: &AccountId, wsv: &mut WorldStateView) -> Result<(), Error> {
             let role = self.object.build(authority);
 
-            for permission in &role.permissions {
-                let definition = wsv
-                    .permission_token_definitions()
-                    .get(&permission.definition_id)
-                    .ok_or_else(|| {
-                        FindError::PermissionTokenDefinition(permission.definition_id.clone())
-                    })?;
-
-                permissions::check_permission_token_parameters(permission, definition)?;
-            }
-
             if wsv.roles().contains_key(role.id()) {
                 return Err(RepetitionError {
                     instruction_type: InstructionType::Register,
@@ -473,7 +462,7 @@ pub mod query {
     }
 
     impl ValidQuery for DoesAccountHavePermissionToken {
-        #[metrics("does_account_have_permission")]
+        #[metrics("does_account_have_permission_token")]
         fn execute(&self, wsv: &WorldStateView) -> Result<Self::Output, Error> {
             let authority = wsv
                 .evaluate(&self.account_id)

@@ -33,6 +33,7 @@ owo-colors = { version = "3.5.0", features = ["supports-colors"] }
 supports-color = "2.0.0"
 inquire = "0.6.2"
 duct = "0.13.6"
+parity-scale-codec = { version = "3.2.1", default-features = false }
 
 [build-dependencies]
 eyre = "0.6.8"

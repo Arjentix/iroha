@@ -5,6 +5,7 @@ use std::str::FromStr as _;
 use eyre::Result;
 use iroha_client::client;
 use iroha_data_model::prelude::*;
+use parity_scale_codec::Encode as _;
 use test_network::*;
 
 #[test]
@@ -25,7 +26,10 @@ fn register_role_with_empty_token_params() -> Result<()> {
     wait_for_genesis_committed(&vec![test_client.clone()], 0);
 
     let role_id = "root".parse().expect("Valid");
-    let token = PermissionToken::new("token".parse().expect("Valid"));
+    let token = PermissionToken {
+        definition_id: "token".to_owned(),
+        payload: Vec::new(),
+    };
     let role = Role::new(role_id).add_permission(token);
 
     test_client.submit(RegisterBox::new(role))?;
@@ -61,14 +65,14 @@ fn register_and_grant_role_for_metadata_access() -> Result<()> {
     // Registering role
     let role_id = <Role as Identifiable>::Id::from_str("ACCESS_TO_MOUSE_METADATA")?;
     let role = Role::new(role_id.clone())
-        .add_permission(
-            PermissionToken::new("can_set_key_value_in_user_account".parse()?)
-                .with_params([("account_id".parse()?, mouse_id.clone().into())]),
-        )
-        .add_permission(
-            PermissionToken::new("can_remove_key_value_in_user_account".parse()?)
-                .with_params([("account_id".parse()?, mouse_id.clone().into())]),
-        );
+        .add_permission(PermissionToken {
+            definition_id: "CanSetKeyValueInUserAccount".to_owned(),
+            payload: mouse_id.encode(),
+        })
+        .add_permission(PermissionToken {
+            definition_id: "CanRemoveKeyValueInUserAccount".to_owned(),
+            payload: mouse_id.encode(),
+        });
     let register_role = RegisterBox::new(role);
     test_client.submit_blocking(register_role)?;
 
@@ -108,12 +112,11 @@ fn unregistered_role_removed_from_account() -> Result<()> {
     test_client.submit_blocking(register_mouse)?;
 
     // Register root role
-    let register_role = RegisterBox::new(
-        Role::new(role_id.clone()).add_permission(
-            PermissionToken::new("can_set_key_value_in_user_account".parse()?)
-                .with_params([("account_id".parse()?, alice_id.into())]),
-        ),
-    );
+    let register_role =
+        RegisterBox::new(Role::new(role_id.clone()).add_permission(PermissionToken {
+            definition_id: "CanSetKeyValueInUserAccount".to_owned(),
+            payload: alice_id.encode(),
+        }));
     test_client.submit_blocking(register_role)?;
 
     // Grant root role to Mouse

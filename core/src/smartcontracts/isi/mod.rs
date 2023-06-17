@@ -10,7 +10,6 @@ pub mod account;
 pub mod asset;
 pub mod block;
 pub mod domain;
-pub mod permissions;
 pub mod query;
 pub mod triggers;
 pub mod tx;
@@ -19,10 +18,7 @@ pub mod world;
 use eyre::Result;
 use iroha_data_model::{
     evaluate::ExpressionEvaluator,
-    isi::{
-        error::{InstructionEvaluationError, InstructionExecutionError as Error},
-        *,
-    },
+    isi::{error::InstructionExecutionError as Error, *},
     prelude::*,
 };
 use iroha_logger::prelude::{Span, *};

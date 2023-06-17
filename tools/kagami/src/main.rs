@@ -240,6 +240,7 @@ mod genesis {
         IdBox,
     };
     use iroha_genesis::{RawGenesisBlock, RawGenesisBlockBuilder, ValidatorMode, ValidatorPath};
+    use parity_scale_codec::Encode as _;
 
     use super::*;
 
@@ -358,26 +359,22 @@ mod genesis {
         );
         let alice_id = <Account as Identifiable>::Id::from_str("alice@wonderland")?;
         let grant_permission_to_set_parameters = GrantBox::new(
-            PermissionToken::new("can_set_parameters".parse()?),
+            PermissionToken {
+                definition_id: "CanSetParameters".to_owned(),
+                payload: Vec::new(),
+            },
             alice_id,
         );
         let register_user_metadata_access = RegisterBox::new(
             Role::new("ALICE_METADATA_ACCESS".parse()?)
-                .add_permission(
-                    PermissionToken::new("can_set_key_value_in_user_account".parse()?).with_params(
-                        [(
-                            "account_id".parse()?,
-                            IdBox::AccountId("alice@wonderland".parse()?).into(),
-                        )],
-                    ),
-                )
-                .add_permission(
-                    PermissionToken::new("can_remove_key_value_in_user_account".parse()?)
-                        .with_params([(
-                            "account_id".parse()?,
-                            IdBox::AccountId("alice@wonderland".parse()?).into(),
-                        )]),
-                ),
+                .add_permission(PermissionToken {
+                    definition_id: "CanSetKeyValueInUserAccount".to_owned(),
+                    payload: ("account_id", "alice@wonderland".parse::<AccountId>()?).encode(),
+                })
+                .add_permission(PermissionToken {
+                    definition_id: "CanRemoveKeyValueInUserAccount".to_owned(),
+                    payload: ("account_id", "alice@wonderland".parse::<AccountId>()?).encode(),
+                }),
         )
         .into();
 

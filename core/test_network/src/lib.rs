@@ -25,6 +25,7 @@ use iroha_data_model::{peer::Peer as DataModelPeer, prelude::*};
 use iroha_genesis::{GenesisNetwork, RawGenesisBlock};
 use iroha_logger::{Configuration as LoggerConfiguration, InstrumentFutures};
 use iroha_primitives::{addr::SocketAddr, socket_addr};
+use parity_scale_codec::Encode as _;
 use rand::seq::IteratorRandom;
 use tempfile::TempDir;
 use tokio::{
@@ -84,30 +85,26 @@ impl TestGenesis for GenesisNetwork {
         let alice_id =
             <Account as Identifiable>::Id::from_str("alice@wonderland").expect("valid names");
 
-        let mint_rose_permission = PermissionToken::new(
-            "can_mint_assets_with_definition"
-                .parse()
-                .expect("valid names"),
-        )
-        .with_params([(
-            "asset_definition_id".parse().expect("valid names"),
-            IdBox::from(rose_definition_id.clone()).into(),
-        )]);
-        let burn_rose_permission = PermissionToken::new(
-            "can_burn_assets_with_definition"
-                .parse()
-                .expect("valid names"),
-        )
-        .with_params([(
-            "asset_definition_id".parse().expect("valid names"),
-            IdBox::from(rose_definition_id).into(),
-        )]);
-        let unregister_any_peer_permission =
-            PermissionToken::new("can_unregister_any_peer".parse().expect("valid names"));
-        let unregister_any_role_permission =
-            PermissionToken::new("can_unregister_any_role".parse().expect("valid names"));
-        let upgrade_validator_permission =
-            PermissionToken::new("can_upgrade_validator".parse().expect("valid names"));
+        let mint_rose_permission = PermissionToken {
+            definition_id: "CanMintAssetsWithDefinition".to_owned(),
+            payload: rose_definition_id.encode(),
+        };
+        let burn_rose_permission = PermissionToken {
+            definition_id: "CanBurnAssetsWithDefinition".to_owned(),
+            payload: rose_definition_id.encode(),
+        };
+        let unregister_any_peer_permission = PermissionToken {
+            definition_id: "CanUnregisterAnyPeer".to_owned(),
+            payload: Vec::new(),
+        };
+        let unregister_any_role_permission = PermissionToken {
+            definition_id: "CanUnregisterAnyRole".to_owned(),
+            payload: Vec::new(),
+        };
+        let upgrade_validator_permission = PermissionToken {
+            definition_id: "CanUpgradeValidator".to_owned(),
+            payload: Vec::new(),
+        };
 
         for permission in [
             mint_rose_permission,

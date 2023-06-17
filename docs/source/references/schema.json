@@ -167,7 +167,7 @@
       },
       {
         "name": "permission_id",
-        "type": "PermissionTokenId"
+        "type": "String"
       }
     ]
   },
@@ -1961,7 +1961,7 @@
       {
         "tag": "PermissionTokenDefinition",
         "discriminant": 10,
-        "type": "PermissionTokenId"
+        "type": "String"
       },
       {
         "tag": "PermissionToken",
@@ -2157,7 +2157,7 @@
       {
         "tag": "PermissionTokenDefinitionId",
         "discriminant": 7,
-        "type": "PermissionTokenId"
+        "type": "String"
       },
       {
         "tag": "ParameterId",
@@ -3155,7 +3155,7 @@
       },
       {
         "name": "permission_definition_id",
-        "type": "PermissionTokenId"
+        "type": "String"
       }
     ]
   },
@@ -3163,11 +3163,11 @@
     "Struct": [
       {
         "name": "definition_id",
-        "type": "PermissionTokenId"
+        "type": "String"
       },
       {
-        "name": "params",
-        "type": "SortedMap<Name, Value>"
+        "name": "payload",
+        "type": "Vec<u8>"
       }
     ]
   },
@@ -3175,11 +3175,11 @@
     "Struct": [
       {
         "name": "id",
-        "type": "PermissionTokenId"
+        "type": "String"
       },
       {
-        "name": "params",
-        "type": "SortedMap<Name, ValueKind>"
+        "name": "metadata",
+        "type": "String"
       }
     ]
   },
@@ -3205,15 +3205,7 @@
       },
       {
         "name": "permission_token_id",
-        "type": "PermissionTokenId"
-      }
-    ]
-  },
-  "PermissionTokenId": {
-    "Struct": [
-      {
-        "name": "name",
-        "type": "Name"
+        "type": "String"
       }
     ]
   },
@@ -4045,12 +4037,6 @@
       "value": "Value"
     }
   },
-  "SortedMap<Name, ValueKind>": {
-    "Map": {
-      "key": "Name",
-      "value": "ValueKind"
-    }
-  },
   "SortedVec<PermissionToken>": {
     "Vec": "PermissionToken"
   },
@@ -4593,98 +4579,6 @@
         "tag": "Validator",
         "discriminant": 21,
         "type": "Validator"
-      }
-    ]
-  },
-  "ValueKind": {
-    "Enum": [
-      {
-        "tag": "Bool",
-        "discriminant": 0
-      },
-      {
-        "tag": "String",
-        "discriminant": 1
-      },
-      {
-        "tag": "Name",
-        "discriminant": 2
-      },
-      {
-        "tag": "Vec",
-        "discriminant": 3
-      },
-      {
-        "tag": "LimitedMetadata",
-        "discriminant": 4
-      },
-      {
-        "tag": "MetadataLimits",
-        "discriminant": 5
-      },
-      {
-        "tag": "TransactionLimits",
-        "discriminant": 6
-      },
-      {
-        "tag": "LengthLimits",
-        "discriminant": 7
-      },
-      {
-        "tag": "Id",
-        "discriminant": 8
-      },
-      {
-        "tag": "Identifiable",
-        "discriminant": 9
-      },
-      {
-        "tag": "PublicKey",
-        "discriminant": 10
-      },
-      {
-        "tag": "SignatureCheckCondition",
-        "discriminant": 11
-      },
-      {
-        "tag": "TransactionValue",
-        "discriminant": 12
-      },
-      {
-        "tag": "TransactionQueryResult",
-        "discriminant": 13
-      },
-      {
-        "tag": "PermissionToken",
-        "discriminant": 14
-      },
-      {
-        "tag": "Hash",
-        "discriminant": 15
-      },
-      {
-        "tag": "Block",
-        "discriminant": 16
-      },
-      {
-        "tag": "BlockHeader",
-        "discriminant": 17
-      },
-      {
-        "tag": "Ipv4Addr",
-        "discriminant": 18
-      },
-      {
-        "tag": "Ipv6Addr",
-        "discriminant": 19
-      },
-      {
-        "tag": "Numeric",
-        "discriminant": 20
-      },
-      {
-        "tag": "Validator",
-        "discriminant": 21
       }
     ]
   },

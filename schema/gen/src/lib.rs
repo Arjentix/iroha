@@ -94,7 +94,6 @@ types!(
     BTreeMap<AssetId, Asset>,
     BTreeMap<Name, EvaluatesTo<Value>>,
     BTreeMap<Name, Value>,
-    BTreeMap<Name, ValueKind>,
     BTreeSet<PermissionToken>,
     BTreeSet<PublicKey>,
     BTreeSet<RoleId>,
@@ -379,7 +378,6 @@ types!(
     Validator,
     ValidatorEvent,
     Value,
-    ValueKind,
     ValueOfKey,
     ValuePredicate,
     Vec<Event>,
@@ -448,7 +446,7 @@ mod tests {
         query::error::{FindError, QueryExecutionFail},
         transaction::{error::TransactionLimitError, SignedTransaction, TransactionLimits},
         validator::Validator,
-        ValueKind, VersionedCommittedBlockWrapper,
+        VersionedCommittedBlockWrapper,
     };
     use iroha_genesis::RawGenesisBlock;
     use iroha_primitives::{

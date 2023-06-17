@@ -1,7 +1,7 @@
 //! Definition of Iroha default validator and accompanying validation functions
 #![allow(missing_docs, clippy::missing_errors_doc)]
 
-use alloc::{borrow::ToOwned as _, vec::Vec};
+use alloc::{borrow::ToOwned as _, format, string::String, vec::Vec};
 
 use account::{
     visit_burn_account_public_key, visit_mint_account_public_key,
@@ -74,45 +74,17 @@ macro_rules! map_all_crate_tokens {
     };
 }
 
-macro_rules! tokens {
-    (
-        pattern = {
-            $(#[$meta:meta])*
-            $vis:vis struct _ {
-                $(
-                    $(#[$field_meta:meta])*
-                    $field_vis:vis $field:ident: $field_type:ty
-                ),* $(,)?
-            }
-        },
-        $module:ident :: tokens: [$($name:ident),+ $(,)?]
-    ) => {
-        declare_tokens!($(
-            crate::default::$module::tokens::$name
-        ),+);
-
-        pub mod tokens {
-            use super::*;
-
-            macro_rules! single_token {
-                ($name_internal:ident) => {
-                    $(#[$meta])*
-                    $vis struct $name_internal {
-                        $(
-                            $(#[$field_meta])*
-                            $field_vis $field: $field_type
-                        ),*
-                    }
-                };
-            }
-
-            $(single_token!($name);)+
-        }
+macro_rules! token {
+    ($($meta:meta)* $item:item) => {
+        #[derive(parity_scale_codec::Decode, parity_scale_codec::Encode)]
+        #[derive(iroha_schema::IntoSchema)]
+        #[derive(Clone, Token)]
+        $($meta)*
+        $item
     };
 }
 
 pub(crate) use map_all_crate_tokens;
-pub(crate) use tokens;
 
 impl Validate for DefaultValidator {
     fn permission_tokens() -> Vec<PermissionTokenDefinition> {
@@ -357,7 +329,7 @@ fn visit_unsupported<V: Validate + ?Sized, T: core::fmt::Debug>(
 
 pub fn visit_expression<V: Validate + ?Sized, X>(
     validator: &mut V,
-    authority: &<Account as Identifiable>::Id,
+    authority: &AccountId,
     expression: &EvaluatesTo<X>,
 ) {
     macro_rules! visit_binary_expression {
@@ -455,17 +427,19 @@ pub fn visit_sequence<V: Validate + ?Sized>(
 pub mod peer {
     use super::*;
 
-    tokens!(
-        pattern = {
-            #[derive(Token, ValidateGrantRevoke)]
+    declare_tokens! {
+        crate::default::peer::tokens::CanUnregisterAnyPeer,
+    }
+
+    pub mod tokens {
+        use super::*;
+
+        token! {
+            #[derive(ValidateGrantRevoke)]
             #[validate(permission::OnlyGenesis)]
-            #[derive(Clone, Copy)]
-            pub struct _ {}
-        },
-        peer::tokens: [
-            CanUnregisterAnyPeer,
-        ]
-    );
+            pub struct CanUnregisterAnyPeer;
+        }
+    }
 
     #[allow(clippy::needless_pass_by_value)]
     pub fn visit_unregister_peer<V: Validate + ?Sized>(
@@ -474,7 +448,7 @@ pub mod peer {
         _isi: Unregister<Peer>,
     ) {
         const CAN_UNREGISTER_PEER_TOKEN: tokens::CanUnregisterAnyPeer =
-            tokens::CanUnregisterAnyPeer {};
+            tokens::CanUnregisterAnyPeer;
 
         if CAN_UNREGISTER_PEER_TOKEN.is_owned_by(authority) {
             pass!(validator);
@@ -487,21 +461,40 @@ pub mod peer {
 pub mod domain {
     use super::*;
 
-    // TODO: We probably need a better way to allow accounts to modify domains.
-    tokens!(
-        pattern = {
-            #[derive(Token, ValidateGrantRevoke)]
+    declare_tokens! {
+        crate::default::domain::tokens::CanUnregisterDomain,
+        crate::default::domain::tokens::CanSetKeyValueInDomain,
+        crate::default::domain::tokens::CanRemoveKeyValueInDomain,
+    }
+
+    pub mod tokens {
+        // TODO: We probably need a better way to allow accounts to modify domains.
+        use super::*;
+
+        token! {
+            #[derive(ValidateGrantRevoke)]
             #[validate(permission::OnlyGenesis)]
-            pub struct _ {
-                pub domain_id: <Domain as Identifiable>::Id,
+            pub struct CanUnregisterDomain {
+                pub domain_id: DomainId,
             }
-        },
-        domain::tokens: [
-            CanUnregisterDomain,
-            CanSetKeyValueInDomain,
-            CanRemoveKeyValueInDomain,
-        ]
-    );
+        }
+
+        token! {
+            #[derive(ValidateGrantRevoke)]
+            #[validate(permission::OnlyGenesis)]
+            pub struct CanSetKeyValueInDomain {
+                pub domain_id: DomainId,
+            }
+        }
+
+        token! {
+            #[derive(ValidateGrantRevoke)]
+            #[validate(permission::OnlyGenesis)]
+            pub struct CanRemoveKeyValueInDomain {
+                pub domain_id: DomainId,
+            }
+        }
+    }
 
     pub fn visit_unregister_domain<V: Validate + ?Sized>(
         validator: &mut V,
@@ -552,23 +545,61 @@ pub mod domain {
 pub mod account {
     use super::*;
 
-    tokens!(
-        pattern = {
-            #[derive(Token, ValidateGrantRevoke, permission::derive_conversions::account::Owner)]
+    declare_tokens! {
+        crate::default::account::tokens::CanUnregisterAccount,
+        crate::default::account::tokens::CanMintUserPublicKeys,
+        crate::default::account::tokens::CanBurnUserPublicKeys,
+        crate::default::account::tokens::CanMintUserSignatureCheckConditions,
+        crate::default::account::tokens::CanSetKeyValueInUserAccount,
+        crate::default::account::tokens::CanRemoveKeyValueInUserAccount,
+    }
+
+    pub mod tokens {
+        use super::*;
+
+        token! {
+            #[derive(ValidateGrantRevoke, permission::derive_conversions::account::Owner)]
             #[validate(permission::account::Owner)]
-            pub struct _ {
+            pub struct CanUnregisterAccount {
                 pub account_id: AccountId,
             }
-        },
-        account::tokens: [
-            CanUnregisterAccount,
-            CanMintUserPublicKeys,
-            CanBurnUserPublicKeys,
-            CanMintUserSignatureCheckConditions,
-            CanSetKeyValueInUserAccount,
-            CanRemoveKeyValueInUserAccount,
-        ]
-    );
+        }
+        token! {
+            #[derive(ValidateGrantRevoke, permission::derive_conversions::account::Owner)]
+            #[validate(permission::account::Owner)]
+            pub struct CanMintUserPublicKeys {
+                pub account_id: AccountId,
+            }
+        }
+        token! {
+            #[derive(ValidateGrantRevoke, permission::derive_conversions::account::Owner)]
+            #[validate(permission::account::Owner)]
+            pub struct CanBurnUserPublicKeys {
+                pub account_id: AccountId,
+            }
+        }
+        token! {
+            #[derive(ValidateGrantRevoke, permission::derive_conversions::account::Owner)]
+            #[validate(permission::account::Owner)]
+            pub struct CanMintUserSignatureCheckConditions {
+                pub account_id: AccountId,
+            }
+        }
+        token! {
+            #[derive(ValidateGrantRevoke, permission::derive_conversions::account::Owner)]
+            #[validate(permission::account::Owner)]
+            pub struct CanSetKeyValueInUserAccount {
+                pub account_id: AccountId,
+            }
+        }
+        token! {
+            #[derive(ValidateGrantRevoke, permission::derive_conversions::account::Owner)]
+            #[validate(permission::account::Owner)]
+            pub struct CanRemoveKeyValueInUserAccount {
+                pub account_id: AccountId,
+            }
+        }
+    }
 
     pub fn visit_unregister_account<V: Validate + ?Sized>(
         validator: &mut V,
@@ -694,24 +725,43 @@ pub mod account {
 pub mod asset_definition {
     use super::*;
 
-    tokens!(
-        pattern = {
-            #[derive(Token, ValidateGrantRevoke, permission::derive_conversions::asset_definition::Owner)]
+    declare_tokens! {
+        crate::default::asset_definition::tokens::CanUnregisterAssetDefinition,
+        crate::default::asset_definition::tokens::CanSetKeyValueInAssetDefinition,
+        crate::default::asset_definition::tokens::CanRemoveKeyValueInAssetDefinition,
+    }
+
+    pub mod tokens {
+        use super::*;
+
+        token! {
+            #[derive(ValidateGrantRevoke, permission::derive_conversions::asset_definition::Owner)]
             #[validate(permission::asset_definition::Owner)]
-            pub struct _ {
-                pub asset_definition_id: <AssetDefinition as Identifiable>::Id,
+            pub struct CanUnregisterAssetDefinition {
+                pub asset_definition_id: AssetDefinitionId,
             }
-        },
-        asset_definition::tokens: [
-            CanUnregisterAssetDefinition,
-            CanSetKeyValueInAssetDefinition,
-            CanRemoveKeyValueInAssetDefinition,
-        ]
-    );
+        }
+
+        token! {
+            #[derive(ValidateGrantRevoke, permission::derive_conversions::asset_definition::Owner)]
+            #[validate(permission::asset_definition::Owner)]
+            pub struct CanSetKeyValueInAssetDefinition {
+                pub asset_definition_id: AssetDefinitionId,
+            }
+        }
+
+        token! {
+            #[derive(ValidateGrantRevoke, permission::derive_conversions::asset_definition::Owner)]
+            #[validate(permission::asset_definition::Owner)]
+            pub struct CanRemoveKeyValueInAssetDefinition {
+                pub asset_definition_id: AssetDefinitionId,
+            }
+        }
+    }
 
     pub(super) fn is_asset_definition_owner(
-        asset_definition_id: &<AssetDefinition as Identifiable>::Id,
-        authority: &<Account as Identifiable>::Id,
+        asset_definition_id: &AssetDefinitionId,
+        authority: &AccountId,
     ) -> Result<bool> {
         IsAssetDefinitionOwner::new(asset_definition_id.clone(), authority.clone()).execute()
     }
@@ -819,7 +869,7 @@ pub mod asset_definition {
 pub mod asset {
     use super::*;
 
-    declare_tokens!(
+    declare_tokens! {
         crate::default::asset::tokens::CanRegisterAssetsWithDefinition,
         crate::default::asset::tokens::CanUnregisterAssetsWithDefinition,
         crate::default::asset::tokens::CanUnregisterUserAsset,
@@ -830,89 +880,89 @@ pub mod asset {
         crate::default::asset::tokens::CanTransferUserAsset,
         crate::default::asset::tokens::CanSetKeyValueInUserAsset,
         crate::default::asset::tokens::CanRemoveKeyValueInUserAsset,
-    );
+    }
 
     pub mod tokens {
         use super::*;
 
-        /// Strongly-typed representation of `can_register_assets_with_definition` permission token.
-        #[derive(
-            Token, ValidateGrantRevoke, permission::derive_conversions::asset_definition::Owner,
-        )]
-        #[validate(permission::asset_definition::Owner)]
-        pub struct CanRegisterAssetsWithDefinition {
-            pub asset_definition_id: <AssetDefinition as Identifiable>::Id,
+        token! {
+            #[derive(ValidateGrantRevoke, permission::derive_conversions::asset_definition::Owner)]
+            #[validate(permission::asset_definition::Owner)]
+            pub struct CanRegisterAssetsWithDefinition {
+                pub asset_definition_id: AssetDefinitionId,
+            }
         }
 
-        /// Strongly-typed representation of `can_unregister_assets_with_definition` permission token.
-        #[derive(
-            Token, ValidateGrantRevoke, permission::derive_conversions::asset_definition::Owner,
-        )]
-        #[validate(permission::asset_definition::Owner)]
-        pub struct CanUnregisterAssetsWithDefinition {
-            pub asset_definition_id: <AssetDefinition as Identifiable>::Id,
+        token! {
+            #[derive(ValidateGrantRevoke, permission::derive_conversions::asset_definition::Owner)]
+            #[validate(permission::asset_definition::Owner)]
+            pub struct CanUnregisterAssetsWithDefinition {
+                pub asset_definition_id: AssetDefinitionId,
+            }
         }
 
-        /// Strongly-typed representation of `can_unregister_user_asset` permission token.
-        #[derive(Token, ValidateGrantRevoke, permission::derive_conversions::asset::Owner)]
-        #[validate(permission::asset::Owner)]
-        pub struct CanUnregisterUserAsset {
-            pub asset_id: <Asset as Identifiable>::Id,
+        token! {
+            #[derive(ValidateGrantRevoke, permission::derive_conversions::asset::Owner)]
+            #[validate(permission::asset::Owner)]
+            pub struct CanUnregisterUserAsset {
+                pub asset_id: AssetId,
+            }
         }
 
-        /// Strongly-typed representation of `can_burn_assets_with_definition` permission token.
-        #[derive(
-            Token, ValidateGrantRevoke, permission::derive_conversions::asset_definition::Owner,
-        )]
-        #[validate(permission::asset_definition::Owner)]
-        pub struct CanBurnAssetsWithDefinition {
-            pub asset_definition_id: <AssetDefinition as Identifiable>::Id,
+        token! {
+            #[derive(ValidateGrantRevoke, permission::derive_conversions::asset_definition::Owner)]
+            #[validate(permission::asset_definition::Owner)]
+            pub struct CanBurnAssetsWithDefinition {
+                pub asset_definition_id: AssetDefinitionId,
+            }
         }
 
-        /// Strong-typed representation of `can_burn_user_asset` permission token.
-        #[derive(Token, ValidateGrantRevoke, permission::derive_conversions::asset::Owner)]
-        #[validate(permission::asset::Owner)]
-        pub struct CanBurnUserAsset {
-            pub asset_id: <Asset as Identifiable>::Id,
+        token! {
+            #[derive(ValidateGrantRevoke, permission::derive_conversions::asset::Owner)]
+            #[validate(permission::asset::Owner)]
+            pub struct CanBurnUserAsset {
+                pub asset_id: AssetId,
+            }
         }
 
-        /// Strongly-typed representation of `can_mint_assets_with_definition` permission token.
-        #[derive(
-            Token, ValidateGrantRevoke, permission::derive_conversions::asset_definition::Owner,
-        )]
-        #[validate(permission::asset_definition::Owner)]
-        pub struct CanMintAssetsWithDefinition {
-            pub asset_definition_id: <AssetDefinition as Identifiable>::Id,
+        token! {
+            #[derive(ValidateGrantRevoke, permission::derive_conversions::asset_definition::Owner)]
+            #[validate(permission::asset_definition::Owner)]
+            pub struct CanMintAssetsWithDefinition {
+                pub asset_definition_id: AssetDefinitionId,
+            }
         }
 
-        /// Strongly-typed representation of `can_transfer_assets_with_definition` permission token.
-        #[derive(
-            Token, ValidateGrantRevoke, permission::derive_conversions::asset_definition::Owner,
-        )]
-        #[validate(permission::asset_definition::Owner)]
-        pub struct CanTransferAssetsWithDefinition {
-            pub asset_definition_id: <AssetDefinition as Identifiable>::Id,
+        token! {
+            #[derive(ValidateGrantRevoke, permission::derive_conversions::asset_definition::Owner)]
+            #[validate(permission::asset_definition::Owner)]
+            pub struct CanTransferAssetsWithDefinition {
+                pub asset_definition_id: AssetDefinitionId,
+            }
         }
 
-        /// Strongly-typed representation of `can_transfer_user_asset` permission token.
-        #[derive(Token, ValidateGrantRevoke, permission::derive_conversions::asset::Owner)]
-        #[validate(permission::asset::Owner)]
-        pub struct CanTransferUserAsset {
-            pub asset_id: <Asset as Identifiable>::Id,
+        token! {
+            #[derive(ValidateGrantRevoke, permission::derive_conversions::asset::Owner)]
+            #[validate(permission::asset::Owner)]
+            pub struct CanTransferUserAsset {
+                pub asset_id: AssetId,
+            }
         }
 
-        /// Strongly-typed representation of `can_set_key_value_in_user_asset` permission token.
-        #[derive(Token, ValidateGrantRevoke, permission::derive_conversions::asset::Owner)]
-        #[validate(permission::asset::Owner)]
-        pub struct CanSetKeyValueInUserAsset {
-            pub asset_id: <Asset as Identifiable>::Id,
+        token! {
+            #[derive(ValidateGrantRevoke, permission::derive_conversions::asset::Owner)]
+            #[validate(permission::asset::Owner)]
+            pub struct CanSetKeyValueInUserAsset {
+                pub asset_id: AssetId,
+            }
         }
 
-        /// Strongly-typed representation of `can_remove_key_value_in_user_asset` permission token.
-        #[derive(Token, ValidateGrantRevoke, permission::derive_conversions::asset::Owner)]
-        #[validate(permission::asset::Owner)]
-        pub struct CanRemoveKeyValueInUserAsset {
-            pub asset_id: <Asset as Identifiable>::Id,
+        token! {
+            #[derive(ValidateGrantRevoke, permission::derive_conversions::asset::Owner)]
+            #[validate(permission::asset::Owner)]
+            pub struct CanRemoveKeyValueInUserAsset {
+                pub asset_id: AssetId,
+            }
         }
     }
 
@@ -1119,22 +1169,25 @@ pub mod parameter {
     pub mod tokens {
         use super::*;
 
-        /// Strongly-typed representation of `can_grant_permission_to_create_parameters` permission token.
-        #[derive(Token, ValidateGrantRevoke, Clone, Copy)]
-        #[validate(permission::OnlyGenesis)]
-        pub struct CanGrantPermissionToCreateParameters;
+        token! {
+            #[derive(Copy, ValidateGrantRevoke)]
+            #[validate(permission::OnlyGenesis)]
+            pub struct CanGrantPermissionToCreateParameters;
+        }
 
-        /// Strongly-typed representation of `can_revoke_permission_to_create_parameters` permission token.
-        #[derive(Token, ValidateGrantRevoke, Clone, Copy)]
-        #[validate(permission::OnlyGenesis)]
-        pub struct CanRevokePermissionToCreateParameters;
+        token! {
+            #[derive(Copy, ValidateGrantRevoke)]
+            #[validate(permission::OnlyGenesis)]
+            pub struct CanRevokePermissionToCreateParameters;
+        }
 
-        /// Strongly-typed representation of `can_create_parameters` permission token.
-        #[derive(Token, Clone, Copy)]
-        pub struct CanCreateParameters;
+        token! {
+            #[derive(Copy)]
+            pub struct CanCreateParameters;
+        }
 
         impl ValidateGrantRevoke for CanCreateParameters {
-            fn validate_grant(&self, authority: &<Account as Identifiable>::Id) -> Result {
+            fn validate_grant(&self, authority: &AccountId) -> Result {
                 if !CanGrantPermissionToCreateParameters.is_owned_by(authority) {
                     return Err(ValidationFail::NotPermitted(
                         "Can't grant permission to create new configuration parameters without permission from genesis"
@@ -1145,7 +1198,7 @@ pub mod parameter {
                 Ok(())
             }
 
-            fn validate_revoke(&self, authority: &<Account as Identifiable>::Id) -> Result {
+            fn validate_revoke(&self, authority: &AccountId) -> Result {
                 if !CanRevokePermissionToCreateParameters.is_owned_by(authority) {
                     return Err(ValidationFail::NotPermitted(
                         "Can't revoke permission to create new configuration parameters without permission from genesis"
@@ -1157,22 +1210,25 @@ pub mod parameter {
             }
         }
 
-        /// Strongly-typed representation of `can_grant_permission_to_set_parameters` permission token.
-        #[derive(Token, ValidateGrantRevoke, Clone, Copy)]
-        #[validate(permission::OnlyGenesis)]
-        pub struct CanGrantPermissionToSetParameters;
+        token! {
+            #[derive(Copy, ValidateGrantRevoke)]
+            #[validate(permission::OnlyGenesis)]
+            pub struct CanGrantPermissionToSetParameters;
+        }
 
-        /// Strongly-typed representation of `can_revoke_permission_to_set_parameters` permission token.
-        #[derive(Token, ValidateGrantRevoke, Clone, Copy)]
-        #[validate(permission::OnlyGenesis)]
-        pub struct CanRevokePermissionToSetParameters;
+        token! {
+            #[derive(Copy, ValidateGrantRevoke)]
+            #[validate(permission::OnlyGenesis)]
+            pub struct CanRevokePermissionToSetParameters;
+        }
 
-        /// Strongly-typed representation of `can_set_parameters` permission token.
-        #[derive(Token, Clone, Copy)]
-        pub struct CanSetParameters;
+        token! {
+            #[derive(Copy)]
+            pub struct CanSetParameters;
+        }
 
         impl ValidateGrantRevoke for CanSetParameters {
-            fn validate_grant(&self, authority: &<Account as Identifiable>::Id) -> Result {
+            fn validate_grant(&self, authority: &AccountId) -> Result {
                 if !CanGrantPermissionToSetParameters.is_owned_by(authority) {
                     return Err(ValidationFail::NotPermitted(
                         "Can't grant permission to set configuration parameters without permission from genesis"
@@ -1183,7 +1239,7 @@ pub mod parameter {
                 Ok(())
             }
 
-            fn validate_revoke(&self, authority: &<Account as Identifiable>::Id) -> Result {
+            fn validate_revoke(&self, authority: &AccountId) -> Result {
                 if !CanRevokePermissionToSetParameters.is_owned_by(authority) {
                     return Err(ValidationFail::NotPermitted(
                         "Can't revoke permission to set configuration parameters without permission from genesis"
@@ -1232,17 +1288,19 @@ pub mod parameter {
 pub mod role {
     use super::*;
 
-    tokens!(
-        pattern = {
-            #[derive(Token, ValidateGrantRevoke)]
+    declare_tokens! {
+        crate::default::role::tokens::CanUnregisterAnyRole,
+    }
+
+    pub mod tokens {
+        use super::*;
+
+        token! {
+            #[derive(ValidateGrantRevoke)]
             #[validate(permission::OnlyGenesis)]
-            #[derive(Clone, Copy)]
-            pub struct _ {}
-        },
-        role::tokens: [
-            CanUnregisterAnyRole,
-        ]
-    );
+            pub struct CanUnregisterAnyRole;
+        }
+    }
 
     macro_rules! impl_validate {
         ($validator:ident, $self:ident, $authority:ident, $method:ident) => {
@@ -1296,7 +1354,7 @@ pub mod role {
         _isi: Unregister<Role>,
     ) {
         const CAN_UNREGISTER_ROLE_TOKEN: tokens::CanUnregisterAnyRole =
-            tokens::CanUnregisterAnyRole {};
+            tokens::CanUnregisterAnyRole;
 
         if CAN_UNREGISTER_ROLE_TOKEN.is_owned_by(authority) {
             pass!(validator);
@@ -1339,20 +1397,39 @@ pub mod trigger {
         )+};
     }
 
-    tokens!(
-        pattern = {
-            #[derive(Token, Clone, ValidateGrantRevoke)]
+    declare_tokens! {
+        crate::default::trigger::tokens::CanExecuteUserTrigger,
+        crate::default::trigger::tokens::CanUnregisterUserTrigger,
+        crate::default::trigger::tokens::CanMintUserTrigger,
+    }
+
+    pub mod tokens {
+        use super::*;
+
+        token! {
+            #[derive(ValidateGrantRevoke)]
             #[validate(permission::trigger::Owner)]
-            pub struct _ {
-                pub trigger_id: <Trigger<FilterBox, Executable> as Identifiable>::Id,
+            pub struct CanExecuteUserTrigger {
+                pub trigger_id: TriggerId,
             }
-        },
-        trigger::tokens: [
-            CanExecuteUserTrigger,
-            CanUnregisterUserTrigger,
-            CanMintUserTrigger,
-        ]
-    );
+        }
+
+        token! {
+            #[derive(ValidateGrantRevoke)]
+            #[validate(permission::trigger::Owner)]
+            pub struct CanUnregisterUserTrigger {
+                pub trigger_id: TriggerId,
+            }
+        }
+
+        token! {
+            #[derive(ValidateGrantRevoke)]
+            #[validate(permission::trigger::Owner)]
+            pub struct CanMintUserTrigger {
+                pub trigger_id: TriggerId,
+            }
+        }
+    }
 
     impl_froms!(
         tokens::CanExecuteUserTrigger,
@@ -1500,17 +1577,19 @@ pub mod permission_token {
 pub mod validator {
     use super::*;
 
-    tokens!(
-        pattern = {
-            #[derive(Token, ValidateGrantRevoke)]
+    declare_tokens! {
+        crate::default::validator::tokens::CanUpgradeValidator,
+    }
+
+    pub mod tokens {
+        use super::*;
+
+        token! {
+            #[derive(Copy, ValidateGrantRevoke)]
             #[validate(permission::OnlyGenesis)]
-            #[derive(Clone, Copy)]
-            pub struct _ {}
-        },
-        validator::tokens: [
-            CanUpgradeValidator,
-        ]
-    );
+            pub struct CanUpgradeValidator;
+        }
+    }
 
     #[allow(clippy::needless_pass_by_value)]
     pub fn visit_upgrade_validator<V: Validate + ?Sized>(
@@ -1519,7 +1598,7 @@ pub mod validator {
         _isi: Upgrade<data_model::validator::Validator>,
     ) {
         const CAN_UPGRADE_VALIDATOR_TOKEN: tokens::CanUpgradeValidator =
-            tokens::CanUpgradeValidator {};
+            tokens::CanUpgradeValidator;
         if CAN_UPGRADE_VALIDATOR_TOKEN.is_owned_by(authority) {
             pass!(validator);
         }

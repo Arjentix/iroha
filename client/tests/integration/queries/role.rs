@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use eyre::Result;
 use iroha_client::client;
 use iroha_data_model::{prelude::*, query::error::QueryExecutionFail};
+use parity_scale_codec::Encode as _;
 use test_network::*;
 
 fn create_role_ids() -> [<Role as Identifiable>::Id; 5] {
@@ -124,17 +125,10 @@ fn find_roles_by_account_id() -> Result<()> {
         .iter()
         .cloned()
         .map(|role_id| {
-            RegisterBox::new(
-                Role::new(role_id).add_permission(
-                    PermissionToken::new(
-                        "can_set_key_value_in_user_account".parse().expect("Valid"),
-                    )
-                    .with_params([(
-                        "account_id".parse().expect("Valid"),
-                        alice_id.clone().into(),
-                    )]),
-                ),
-            )
+            RegisterBox::new(Role::new(role_id).add_permission(PermissionToken {
+                definition_id: "CanSetKeyValueInUserAccount".to_owned(),
+                payload: alice_id.encode(),
+            }))
         })
         .collect::<Vec<_>>();
     test_client.submit_all_blocking(register_roles)?;

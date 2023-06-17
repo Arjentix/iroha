@@ -5,6 +5,7 @@ use std::{str::FromStr as _, thread};
 use eyre::Result;
 use iroha_client::client::{self, Client};
 use iroha_data_model::prelude::*;
+use parity_scale_codec::Encode as _;
 use test_network::{PeerBuilder, *};
 
 use super::Configuration;
@@ -213,10 +214,7 @@ fn permissions_differ_not_only_by_names() {
     let mouse_hat_id = <Asset as Identifiable>::Id::new(hat_definition_id, mouse_id.clone());
     let allow_alice_to_set_key_value_in_hats = GrantBox::new(
         PermissionToken::new("can_set_key_value_in_user_asset".parse().expect("Valid"))
-            .with_params([(
-                "asset_id".parse().expect("Valid"),
-                mouse_hat_id.clone().into(),
-            )]),
+            .with_params([("asset_id".parse().expect("Valid"), mouse_hat_id.encode())]),
         alice_id.clone(),
     );
 
@@ -251,7 +249,7 @@ fn permissions_differ_not_only_by_names() {
     // Granting permission to Alice to modify metadata in Mouse's shoes
     let allow_alice_to_set_key_value_in_shoes = GrantBox::new(
         PermissionToken::new("can_set_key_value_in_user_asset".parse().expect("Valid"))
-            .with_params([("asset_id".parse().expect("Valid"), mouse_shoes_id.into())]),
+            .with_params([("asset_id".parse().expect("Valid"), mouse_shoes_id.encode())]),
         alice_id,
     );
 
@@ -302,7 +300,7 @@ mod token_parameters {
     #[test]
     fn token_with_one_missing_parameter_is_not_accepted() {
         let token = PermissionToken::new(TEST_TOKEN_DEFINITION_ID.clone())
-            .with_params([(NUMBER_PARAMETER_NAME.clone(), 1_u32.into())]);
+            .with_params([(NUMBER_PARAMETER_NAME.clone(), 1_u32.encode())]);
         let expect = "Expected to fail to grant permission token with one missing parameter";
 
         run_grant_token_error_test(token.clone(), expect);
@@ -313,7 +311,7 @@ mod token_parameters {
     #[test]
     fn token_with_changed_parameter_name_is_not_accepted() {
         let token = PermissionToken::new(TEST_TOKEN_DEFINITION_ID.clone()).with_params([
-            (NUMBER_PARAMETER_NAME.clone(), 1_u32.into()),
+            (NUMBER_PARAMETER_NAME.clone(), 1_u32.encode()),
             (
                 "it's_a_trap".parse().expect("Valid"),
                 "test".to_owned().into(),
@@ -330,7 +328,7 @@ mod token_parameters {
     fn token_with_extra_parameter_is_not_accepted() {
         let token = PermissionToken::new(TEST_TOKEN_DEFINITION_ID.clone()).with_params([
             (NUMBER_PARAMETER_NAME.clone(), 1_u32.into()),
-            (STRING_PARAMETER_NAME.clone(), "test".to_owned().into()),
+            (STRING_PARAMETER_NAME.clone(), "test".encode()),
             (
                 "extra_param".parse().expect("Valid"),
                 "extra_test".to_owned().into(),
@@ -346,7 +344,7 @@ mod token_parameters {
     #[test]
     fn token_with_wrong_parameter_type_is_not_accepted() {
         let token = PermissionToken::new(TEST_TOKEN_DEFINITION_ID.clone()).with_params([
-            (NUMBER_PARAMETER_NAME.clone(), 1_u32.into()),
+            (NUMBER_PARAMETER_NAME.clone(), 1_u32.encode()),
             (
                 STRING_PARAMETER_NAME.clone(),
                 Value::Name("test".parse().expect("Valid")),

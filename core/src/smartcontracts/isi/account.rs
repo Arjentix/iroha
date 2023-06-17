@@ -261,13 +261,6 @@ pub mod isi {
             // Check if account exists
             wsv.account_mut(&account_id)?;
 
-            let definition = wsv
-                .permission_token_definitions()
-                .get(&permission_id)
-                .ok_or_else(|| FindError::PermissionTokenDefinition(permission_id.clone()))?;
-
-            permissions::check_permission_token_parameters(&permission, definition)?;
-
             if wsv.account_contains_inherent_permission(&account_id, &permission) {
                 return Err(RepetitionError {
                     instruction_type: InstructionType::Grant,

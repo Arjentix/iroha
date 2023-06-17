@@ -39,7 +39,7 @@ use getset::Getters;
 use iroha_crypto::{Hash, PublicKey};
 pub use iroha_crypto::{SignatureOf, SignaturesOf};
 use iroha_data_model_derive::{
-    model, IdEqOrdHash, PartiallyTaggedDeserialize, PartiallyTaggedSerialize, VariantDiscriminant,
+    model, IdEqOrdHash, PartiallyTaggedDeserialize, PartiallyTaggedSerialize,
 };
 use iroha_macro::{error::ErrorTryFromEnum, FromVariant};
 use iroha_primitives::{
@@ -52,7 +52,6 @@ use parity_scale_codec::{Decode, Encode};
 use prelude::{Executable, TransactionQueryResult};
 use serde::{Deserialize, Serialize};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
-use strum::EnumDiscriminants;
 
 pub use self::model::*;
 use crate::{account::SignatureCheckCondition, name::Name, transaction::TransactionValue};
@@ -83,34 +82,6 @@ pub mod transaction;
 pub mod trigger;
 pub mod validator;
 pub mod visit;
-
-mod utils {
-    use core::fmt::*;
-
-    /// Format `input` separating items with a comma,
-    /// wrapping the whole output into provided characters.
-    ///
-    /// # Errors
-    ///
-    /// - if cannot write to the `f`
-    pub fn format_comma_separated<T: Display>(
-        mut input: impl Iterator<Item = T>,
-        (open, close): (char, char),
-        f: &mut Formatter<'_>,
-    ) -> Result {
-        f.write_char(open)?;
-
-        if let Some(item) = input.next() {
-            f.write_fmt(format_args!("{item}"))?;
-        }
-
-        for item in input {
-            f.write_fmt(format_args!(", {item}"))?;
-        }
-
-        f.write_char(close)
-    }
-}
 
 mod seal {
     use crate::{isi::prelude::*, query::prelude::*};
@@ -257,12 +228,6 @@ impl<EXPECTED, GOT> EnumTryAsError<EXPECTED, GOT> {
 
 #[cfg(feature = "std")]
 impl<EXPECTED: Debug, GOT: Debug> std::error::Error for EnumTryAsError<EXPECTED, GOT> {}
-
-/// Trait to define associated constant of type `T`
-pub trait AssociatedConstant<T> {
-    /// Associated constant value
-    const VALUE: T;
-}
 
 pub mod parameter {
     //! Structures, traits and impls related to `Paramater`s.
@@ -786,25 +751,12 @@ pub mod model {
         PartialOrd,
         Ord,
         FromVariant,
-        EnumDiscriminants,
-        VariantDiscriminant,
         Decode,
         Encode,
         PartiallyTaggedDeserialize,
         PartiallyTaggedSerialize,
         IntoSchema,
     )]
-    #[strum_discriminants(
-        name(ValueKind),
-        derive(Display, Decode, Encode, Deserialize, Serialize, IntoSchema),
-        cfg_attr(
-            any(feature = "ffi_import", feature = "ffi_export"),
-            derive(iroha_ffi::FfiType)
-        ),
-        allow(missing_docs),
-        repr(u8)
-    )]
-    #[variant_discriminant(name(ValueKind))]
     #[allow(clippy::enum_variant_names, missing_docs)]
     #[ffi_type(opaque)]
     pub enum Value {
@@ -1184,10 +1136,6 @@ macro_rules! from_and_try_from_value_idbox {
                     Value::Id(IdBox::$variant(id))
                 }
             }
-
-            impl AssociatedConstant<ValueKind> for $ty {
-                const VALUE: ValueKind = ValueKind::Id;
-            }
         )*
     };
 }
@@ -1226,10 +1174,6 @@ macro_rules! from_and_try_from_value_identifiablebox {
                     Value::Identifiable(IdentifiableBox::$variant(Box::new(id)))
                 }
             }
-
-            impl AssociatedConstant<ValueKind> for $ty {
-                const VALUE: ValueKind = ValueKind::Identifiable;
-            }
         )*
     };
 }
@@ -1252,10 +1196,6 @@ macro_rules! from_and_try_from_value_identifiable {
                 fn from(id: $ty) -> Self {
                     Value::Identifiable(IdentifiableBox::$variant(id))
                 }
-            }
-
-            impl AssociatedConstant<ValueKind> for $ty {
-                const VALUE: ValueKind = ValueKind::Identifiable;
             }
         )*
     };
