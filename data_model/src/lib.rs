@@ -55,7 +55,7 @@ use serde_with::{DeserializeFromStr, SerializeDisplay};
 use strum::EnumDiscriminants;
 
 pub use self::model::*;
-use crate::{account::SignatureCheckCondition, name::Name, transaction::TransactionValue}; // Hack for macros
+use crate::{account::SignatureCheckCondition, name::Name, transaction::TransactionValue};
 
 pub mod account;
 pub mod asset;
