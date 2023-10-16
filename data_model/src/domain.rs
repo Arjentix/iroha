@@ -73,8 +73,10 @@ pub mod model {
         /// Identification of this [`Domain`].
         pub id: DomainId,
         /// [`Account`]s of the domain.
+        #[serde(deserialize_with = "deserialize_accounts")]
         pub accounts: AccountsMap,
         /// [`Asset`](AssetDefinition)s defined of the `Domain`.
+        #[serde(deserialize_with = "deserialize_asset_definitions")]
         pub asset_definitions: AssetDefinitionsMap,
         /// Total amount of [`Asset`].
         pub asset_total_quantities: AssetTotalQuantityMap,
@@ -263,6 +265,45 @@ impl FromIterator<Domain> for crate::Value {
             .collect::<Vec<Self>>()
             .into()
     }
+}
+
+fn deserialize_accounts<'de, D>(deserializer: D) -> Result<AccountsMap, D::Error>
+where
+    D: serde::de::Deserializer<'de>,
+{
+    let mut first_domain_id: Option<DomainId> = None;
+    crate::rc_decode::deserialize_map_with(deserializer, |id, account: &mut Account| {
+        match &mut first_domain_id {
+            Some(domain_id) => {
+                account.id.domain_id = domain_id.clone();
+            }
+            None => {
+                first_domain_id = Some(account.id.domain_id.clone());
+            }
+        }
+        *id = account.id.clone();
+    })
+}
+
+fn deserialize_asset_definitions<'de, D>(deserializer: D) -> Result<AssetDefinitionsMap, D::Error>
+where
+    D: serde::de::Deserializer<'de>,
+{
+    let mut first_domain_id: Option<DomainId> = None;
+    crate::rc_decode::deserialize_map_with(
+        deserializer,
+        |id, asset_definition: &mut AssetDefinition| {
+            match &mut first_domain_id {
+                Some(domain_id) => {
+                    asset_definition.id.domain_id = domain_id.clone();
+                }
+                None => {
+                    first_domain_id = Some(asset_definition.id.domain_id.clone());
+                }
+            }
+            *id = asset_definition.id.clone();
+        },
+    )
 }
 
 /// The prelude re-exports most commonly used traits, structs and macros from this crate.

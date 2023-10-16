@@ -67,13 +67,17 @@ pub mod isi {
     impl Execute for Register<Domain> {
         #[metrics("register_domain")]
         fn execute(self, authority: &AccountId, wsv: &mut WorldStateView) -> Result<(), Error> {
-            let domain: Domain = self.object.build(authority);
+            let mut domain: Domain = self.object.build(authority);
             let domain_id = domain.id().clone();
 
             domain_id
                 .name
                 .validate_len(wsv.config.ident_length_limits)
                 .map_err(Error::from)?;
+
+            // Using stored account id to optimize memory usage via reference counting
+            let owner_account = wsv.account(&domain.owned_by)?;
+            domain.owned_by = owner_account.id().clone();
 
             let world = wsv.world_mut();
             if world.domains.contains_key(&domain_id) {

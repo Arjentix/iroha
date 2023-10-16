@@ -269,19 +269,23 @@ pub mod isi {
         #[metrics(+"grant_account_permission")]
         fn execute(self, _authority: &AccountId, wsv: &mut WorldStateView) -> Result<(), Error> {
             let account_id = self.destination_id;
-            let permission = self.object;
+            let mut permission = self.object;
             let permission_id = permission.definition_id.clone();
 
             // Check if account exists
             wsv.account_mut(&account_id)?;
 
-            if !wsv
-                .permission_token_schema()
-                .token_ids
-                .contains(&permission_id)
+            let token_ids = &wsv.permission_token_schema().token_ids;
+
+            let Some(position) = token_ids.iter()
+                .position(|id| id == &permission_id) else
             {
                 return Err(FindError::PermissionToken(permission_id).into());
-            }
+            };
+
+            // Using stored ids to optimize memory usage via reference counting
+            let permission_id = token_ids[position].clone();
+            permission.definition_id = permission_id.clone();
 
             if wsv.account_contains_inherent_permission(&account_id, &permission) {
                 return Err(RepetitionError {
@@ -334,17 +338,14 @@ pub mod isi {
             let account_id = self.destination_id;
             let role_id = self.object;
 
-            let permissions = wsv
-                .world()
-                .roles
+            // Using stored ids to optimize memory usage via reference counting
+            let account_id = wsv.account(&account_id)?.id().clone();
+            let role = wsv
+                .roles()
                 .get(&role_id)
                 .ok_or_else(|| FindError::Role(role_id.clone()))?
-                .clone()
-                .permissions
-                .into_iter()
-                .map(|token| token.definition_id);
-
-            wsv.account(&account_id)?;
+                .clone();
+            let role_id = role.id().clone();
 
             if !wsv
                 .world
@@ -357,6 +358,11 @@ pub mod isi {
                 }
                 .into());
             }
+
+            let permissions = role
+                .permissions
+                .into_iter()
+                .map(|token| token.definition_id);
 
             wsv.emit_events({
                 let account_id_clone = account_id.clone();

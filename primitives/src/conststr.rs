@@ -1,7 +1,6 @@
 //! Const-string related implementation and structs.
 #[cfg(not(feature = "std"))]
 use alloc::{
-    borrow::ToOwned as _,
     boxed::Box,
     string::{String, ToString as _},
 };
@@ -11,13 +10,12 @@ use core::{
     convert::TryFrom,
     fmt,
     hash::{Hash, Hasher},
-    mem::{size_of, ManuallyDrop},
+    mem::{align_of, size_of, ManuallyDrop},
     ops::Deref,
     ptr::NonNull,
-    slice::{from_raw_parts, from_raw_parts_mut},
-    str::from_utf8_unchecked,
 };
 
+use arcstr::ArcStr;
 use derive_more::{DebugCustom, Display};
 use iroha_schema::{Ident, IntoSchema, MetaMap, TypeId};
 use parity_scale_codec::{WrapperTypeDecode, WrapperTypeEncode};
@@ -30,21 +28,21 @@ const MAX_INLINED_STRING_LEN: usize = 2 * size_of::<usize>() - 1;
 
 /// Immutable inlinable string.
 /// Strings shorter than 15/7/3 bytes (in 64/32/16-bit architecture) are inlined.
-/// Union represents const-string variants: inlined or boxed.
+/// Union represents const-string variants: inlined or reference counted.
 /// Distinction between variants are achieved by tagging most significant bit of field `len`:
 /// - for inlined variant MSB of `len` is always equal to 1, it's enforced by `InlinedString` constructor;
-/// - for boxed variant MSB of `len` is always equal to 0, it's enforced by the fact
+/// - for reference counted variant MSB of `len` is always equal to 0, it's enforced by the fact
 /// that `Box` and `Vec` never allocate more than`isize::MAX bytes`.
 /// For little-endian 64bit architecture memory layout of [`Self`] is following:
 ///
 /// ```text
-/// +---------+-------+---------+----------+----------------+
-/// | Bits    | 0..63 | 64..118 | 119..126 | 127            |
-/// +---------+-------+---------+----------+----------------+
-/// | Inlined | payload         | len      | tag (always 1) |
-/// +---------+-------+---------+----------+----------------+
-/// | Box     | ptr   | len                | tag (always 0) |
-/// +---------+-------+--------------------+----------------+
+/// +-------------------+-------+---------+---------------------------+
+/// | Bits              | 0..63 | 64..118 | 119..126 | 127            |
+/// +-------------------+-------+---------+----------+----------------+
+/// | Inlined           | payload         | len      | tag (always 1) |
+/// +-------------------+-------+---------+---------------------------+
+/// | Reference counted | ptr   | len                | tag (always 0) |
+/// +-------------------+-------+--------------------+----------------+
 /// ```
 #[derive(DebugCustom, Display)]
 #[display(fmt = "{}", "&**self")]
@@ -52,17 +50,31 @@ const MAX_INLINED_STRING_LEN: usize = 2 * size_of::<usize>() - 1;
 #[repr(C)]
 pub union ConstString {
     inlined: InlinedString,
-    boxed: ManuallyDrop<BoxedString>,
+    ref_counted: ManuallyDrop<ArcString>,
 }
+
+/// Test to ensure at compile-time that all [`ConstString`] variants have the same size.
+const _: () = assert!(size_of::<InlinedString>() == size_of::<ManuallyDrop<ArcString>>());
+
+/// Test [`ConstString`] layout
+const _: () = assert!(size_of::<ConstString>() == size_of::<Box<str>>());
+const _: () = assert!(align_of::<ConstString>() == align_of::<Box<str>>());
+
+/// Test [`ArcStr`] layout
+const _: () = assert!(size_of::<ArcStr>() == size_of::<NonNull<u8>>());
+const _: () = assert!(align_of::<ArcStr>() == align_of::<NonNull<u8>>());
 
 impl ConstString {
     /// Return the length of this [`Self`], in bytes.
     #[inline]
+    #[allow(unsafe_code)]
     pub fn len(&self) -> usize {
         if self.is_inlined() {
-            self.inlined().len()
+            // Safety: `is_inlined()` returned `true`
+            unsafe { self.inlined().len() }
         } else {
-            self.boxed().len()
+            // Safety: `is_inlined()` returned `false`
+            unsafe { self.reference_counted().len() }
         }
     }
 
@@ -82,36 +94,41 @@ impl ConstString {
 
     /// Return `true` if [`Self`] is inlined.
     #[inline]
+    #[allow(unsafe_code)]
     pub const fn is_inlined(&self) -> bool {
-        self.inlined().is_inlined()
+        // Safety: interpreting [`Self`] as [`InlinedString`] and calling
+        // [`InlinedString::is_inlined()`] is always safe, because in fact
+        // it's just [u8] cast and MSB checking.
+        unsafe { self.inlined().is_inlined() }
     }
 
     #[allow(unsafe_code)]
     #[inline]
-    const fn inlined(&self) -> &InlinedString {
-        // SAFETY: safe to access if `is_inlined` == `true`.
-        unsafe { &self.inlined }
+    const unsafe fn inlined(&self) -> &InlinedString {
+        &self.inlined
     }
 
     #[allow(unsafe_code)]
     #[inline]
-    fn boxed(&self) -> &BoxedString {
-        // SAFETY: safe to access if `is_inlined` == `false`.
-        unsafe { &self.boxed }
+    unsafe fn reference_counted(&self) -> &ArcString {
+        &self.ref_counted
     }
 }
 
 impl<T: ?Sized> AsRef<T> for ConstString
 where
     InlinedString: AsRef<T>,
-    BoxedString: AsRef<T>,
+    ArcString: AsRef<T>,
 {
     #[inline]
+    #[allow(unsafe_code)]
     fn as_ref(&self) -> &T {
         if self.is_inlined() {
-            self.inlined().as_ref()
+            // Safety: `is_inlined()` returned `true`
+            unsafe { self.inlined().as_ref() }
         } else {
-            self.boxed().as_ref()
+            // Safety: `is_inlined()` returned `false`
+            unsafe { self.reference_counted().as_ref() }
         }
     }
 }
@@ -190,28 +207,33 @@ impl Eq for ConstString {}
 impl<T> From<T> for ConstString
 where
     T: TryInto<InlinedString>,
-    <T as TryInto<InlinedString>>::Error: Into<BoxedString>,
+    <T as TryInto<InlinedString>>::Error: Into<ArcString>,
 {
     #[inline]
     fn from(value: T) -> Self {
         match value.try_into() {
             Ok(inlined) => Self { inlined },
             Err(value) => Self {
-                boxed: ManuallyDrop::new(value.into()),
+                ref_counted: ManuallyDrop::new(value.into()),
             },
         }
     }
 }
 
 impl Clone for ConstString {
+    #[allow(unsafe_code)]
     fn clone(&self) -> Self {
         if self.is_inlined() {
-            Self {
-                inlined: *self.inlined(),
+            // Safety: `is_inlined()` returned `true`
+            unsafe {
+                Self {
+                    inlined: *self.inlined(),
+                }
             }
         } else {
             Self {
-                boxed: ManuallyDrop::new(self.boxed().clone()),
+                // Safety: `is_inlined()` returned `false`
+                ref_counted: unsafe { ManuallyDrop::new(self.reference_counted().clone()) },
             }
         }
     }
@@ -221,9 +243,9 @@ impl Drop for ConstString {
     #[allow(unsafe_code)]
     fn drop(&mut self) {
         if !self.is_inlined() {
-            // SAFETY: safe because`is_inlined` == `false`.
+            // SAFETY: safe because `is_inlined()` returned `false`.
             unsafe {
-                ManuallyDrop::drop(&mut self.boxed);
+                ManuallyDrop::drop(&mut self.ref_counted);
             }
         }
     }
@@ -292,65 +314,44 @@ impl IntoSchema for ConstString {
     }
 }
 
-#[derive(DebugCustom)]
-#[debug(fmt = "{:?}", "&**self")]
-#[repr(C)]
-struct BoxedString {
-    #[cfg(target_endian = "little")]
-    ptr: NonNull<u8>,
-    len: usize,
-    #[cfg(target_endian = "big")]
-    ptr: NonNull<u8>,
-}
-
-impl Default for BoxedString {
-    fn default() -> Self {
-        Self {
-            ptr: NonNull::dangling(),
-            len: 0,
-        }
-    }
-}
-
 impl Default for ConstString {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl BoxedString {
+#[derive(DebugCustom, Clone)]
+#[debug(fmt = "{:?}", "&**self")]
+#[repr(C)]
+struct ArcString {
+    /// [`ArcStr`] provides some optimization in comparison to just [`std::sync::Arc`].
+    /// For example it has no `Weak` which allows to remove some overhead.
+    #[cfg(target_endian = "little")]
+    arc: ArcStr,
+    /// Technically [`ArcStr`] also provides [`len()`](ArcStr::len) method, but
+    /// we have some extra space in the struct, so we can store it here and remove needless
+    /// pointer jump.
+    len: usize,
+    #[cfg(target_endian = "big")]
+    arc: ArcStr,
+}
+
+impl ArcString {
     #[inline]
     const fn len(&self) -> usize {
         self.len
     }
-
-    #[allow(unsafe_code)]
-    #[inline]
-    fn as_bytes(&self) -> &[u8] {
-        // SAFETY: created from `Box<[u8]>`.
-        unsafe { from_raw_parts(self.ptr.as_ptr(), self.len) }
-    }
-
-    #[allow(unsafe_code)]
-    #[inline]
-    fn from_boxed_slice(slice: Box<[u8]>) -> Self {
-        let len = slice.len();
-        // SAFETY: `Box::into_raw` returns properly aligned and non-null pointers.
-        let ptr = unsafe { NonNull::new_unchecked(Box::into_raw(slice).cast::<u8>()) };
-        Self { ptr, len }
-    }
 }
 
-impl AsRef<str> for BoxedString {
+impl AsRef<str> for ArcString {
     #[allow(unsafe_code)]
     #[inline]
     fn as_ref(&self) -> &str {
-        // SAFETY: created from valid utf-8
-        unsafe { from_utf8_unchecked(self.as_bytes()) }
+        self.arc.as_ref()
     }
 }
 
-impl Deref for BoxedString {
+impl Deref for ArcString {
     type Target = str;
 
     #[inline]
@@ -359,49 +360,26 @@ impl Deref for BoxedString {
     }
 }
 
-impl Clone for BoxedString {
-    /// Properly clone [`Self`] into new allocation.
-    fn clone(&self) -> Self {
-        Self::from_boxed_slice(self.as_bytes().to_owned().into_boxed_slice())
-    }
-}
-
-impl From<&str> for BoxedString {
+impl From<&str> for ArcString {
     #[allow(unsafe_code)]
     #[inline]
     fn from(value: &str) -> Self {
-        Self::from_boxed_slice(value.as_bytes().to_owned().into_boxed_slice())
-    }
-}
-
-impl From<String> for BoxedString {
-    #[inline]
-    fn from(value: String) -> Self {
-        Self::from_boxed_slice(value.into_bytes().into_boxed_slice())
-    }
-}
-
-impl Drop for BoxedString {
-    #[allow(unsafe_code)]
-    fn drop(&mut self) {
-        // SAFETY: created from `Box<[u8]>`.
-        unsafe {
-            let _dropped = Box::<[_]>::from_raw(from_raw_parts_mut(self.ptr.as_ptr(), self.len));
+        Self {
+            arc: ArcStr::from(value),
+            len: value.len(),
         }
     }
 }
 
-/// `BoxedString` is `Send` because the data they
-/// reference is unaliased. Aliasing invariant is enforced by
-/// creation of `BoxedString`.
-#[allow(unsafe_code)]
-unsafe impl Send for BoxedString {}
-
-/// `BoxedString` is `Sync` because the data they
-/// reference is unaliased. Aliasing invariant is enforced by
-/// creation of `BoxedString`.
-#[allow(unsafe_code)]
-unsafe impl Sync for BoxedString {}
+impl From<String> for ArcString {
+    #[inline]
+    fn from(value: String) -> Self {
+        Self {
+            len: value.len(),
+            arc: ArcStr::from(value),
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -435,6 +413,7 @@ impl InlinedString {
     }
 }
 
+// TODO: Not safe
 impl AsRef<str> for InlinedString {
     #[allow(unsafe_code)]
     #[inline]
@@ -475,18 +454,6 @@ impl TryFrom<String> for InlinedString {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    mod layout {
-        use core::mem::{align_of, size_of};
-
-        use super::*;
-
-        #[test]
-        fn const_string_layout() {
-            assert_eq!(size_of::<ConstString>(), size_of::<Box<str>>());
-            assert_eq!(align_of::<ConstString>(), align_of::<Box<str>>());
-        }
-    }
 
     mod api {
         use super::*;

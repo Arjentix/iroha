@@ -25,7 +25,7 @@ pub mod isi {
     impl Execute for Register<Trigger<TriggeringFilterBox>> {
         #[metrics(+"register_trigger")]
         fn execute(self, _authority: &AccountId, wsv: &mut WorldStateView) -> Result<(), Error> {
-            let new_trigger = self.object;
+            let mut new_trigger = self.object;
 
             if !new_trigger.action.filter.mintable() {
                 match &new_trigger.action.repeats {
@@ -36,9 +36,16 @@ pub mod isi {
                 }
             }
 
+            if let Some(domain_id) = &new_trigger.id.domain_id {
+                // Using stored domain id to optimize memory usage via reference counting
+                let domain = wsv.domain(domain_id)?;
+                let _ = new_trigger.id.domain_id.insert(domain.id().clone());
+            }
+
             let engine = wsv.engine.clone(); // Cloning engine is cheap
             let triggers = wsv.triggers_mut();
             let trigger_id = new_trigger.id().clone();
+
             let success = match &new_trigger.action.filter {
                 TriggeringFilterBox::Data(_) => triggers.add_data_trigger(
                     &engine,

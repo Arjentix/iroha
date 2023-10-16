@@ -43,7 +43,7 @@ pub mod isi {
     impl Execute for Register<Account> {
         #[metrics(+"register_account")]
         fn execute(self, authority: &AccountId, wsv: &mut WorldStateView) -> Result<(), Error> {
-            let account: Account = self.object.build(authority);
+            let mut account: Account = self.object.build(authority);
             let account_id = account.id().clone();
 
             account_id
@@ -59,6 +59,8 @@ pub mod isi {
                 }
                 .into());
             }
+            // Using stored domain id to optimize memory usage via reference counting
+            account.id.domain_id = domain.id().clone();
             domain.add_account(account.clone());
 
             wsv.emit_events(Some(DomainEvent::Account(AccountEvent::Created(account))));
@@ -104,6 +106,10 @@ pub mod isi {
                 }
                 .into());
             }
+
+            // Using stored domain id to optimize memory usage via reference counting
+            let asset_definition_id =
+                AssetDefinitionId::new(asset_definition_id.name, domain.id().clone());
 
             #[allow(clippy::match_same_arms)]
             match asset_definition.value_type {
@@ -287,7 +293,9 @@ pub mod isi {
 
     impl Execute for Transfer<Account, DomainId, Account> {
         fn execute(self, _authority: &AccountId, wsv: &mut WorldStateView) -> Result<(), Error> {
-            wsv.domain_mut(&self.object)?.owned_by = self.destination_id.clone();
+            // Using stored account id to optimize memory usage via reference counting
+            let dest_account = wsv.account(&self.destination_id)?;
+            wsv.domain_mut(&self.object)?.owned_by = dest_account.id().clone();
 
             wsv.emit_events(Some(DomainEvent::OwnerChanged(DomainOwnerChanged {
                 domain_id: self.object,

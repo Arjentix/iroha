@@ -70,6 +70,7 @@ pub mod permission;
 #[cfg(feature = "http")]
 pub mod predicate;
 pub mod query;
+pub mod rc_decode;
 pub mod role;
 pub mod smart_contract;
 pub mod transaction;

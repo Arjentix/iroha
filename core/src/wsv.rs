@@ -784,27 +784,47 @@ impl WorldStateView {
         &mut self,
         id: &AssetId,
         default_asset_value: impl Into<AssetValue>,
-    ) -> Result<Asset, Error> {
-        if let Ok(asset) = self.asset(id) {
-            return Ok(asset);
-        }
+    ) -> Result<&mut Asset, Error> {
+        let asset_definition_id = {
+            let asset_definition_id = &id.definition_id;
+            let asset_definition_domain_id = &id.definition_id.domain_id;
+            let asset_definition_domain = self
+                .world
+                .domains
+                .get_mut(asset_definition_domain_id)
+                .ok_or(FindError::Domain(asset_definition_domain_id.clone()))?;
+            asset_definition_domain
+                .asset_definitions
+                .get(asset_definition_id)
+                .ok_or(FindError::AssetDefinition(asset_definition_id.clone()))?
+                .id()
+                .clone()
+        };
 
-        // This function is strictly infallible.
-        let asset = self
-            .account_mut(&id.account_id)
-            .map(|account| {
-                let asset = Asset::new(id.clone(), default_asset_value.into());
-                assert!(account.add_asset(asset.clone()).is_none());
-                asset
-            })
-            .map_err(|err| {
-                iroha_logger::warn!(?err);
-                err
-            })?;
+        let account_id = &id.account_id;
+        let account_domain = self
+            .world
+            .domains
+            .get_mut(&id.account_id.domain_id)
+            .ok_or(FindError::Domain(id.account_id.domain_id.clone()))?;
+        let account = account_domain
+            .accounts
+            .get_mut(account_id)
+            .ok_or(FindError::Account(account_id.clone()))?;
 
-        self.emit_events(Some(AccountEvent::Asset(AssetEvent::Created(asset))));
+        // Using clones of existing ids to optimize memory usage via reference counting
+        let account_id = account.id().clone();
+        let asset_id = AssetId::new(asset_definition_id, account_id);
 
-        self.asset(id).map_err(Into::into)
+        Ok(account.assets.entry(asset_id.clone()).or_insert_with(|| {
+            let asset = Asset::new(asset_id, default_asset_value.into());
+            Self::emit_events_impl(
+                &mut self.world.triggers,
+                &mut self.events_buffer,
+                Some(AccountEvent::Asset(AssetEvent::Created(asset.clone()))),
+            );
+            asset
+        }))
     }
 
     /// Load all blocks in the block chain from disc
@@ -1244,6 +1264,21 @@ impl WorldStateView {
     /// Events should be produced in the order of expanding scope: from specific to general.
     /// Example: account events before domain events.
     pub fn emit_events<I: IntoIterator<Item = T>, T: Into<WorldEvent>>(&mut self, world_events: I) {
+        Self::emit_events_impl(
+            &mut self.world.triggers,
+            &mut self.events_buffer,
+            world_events,
+        )
+    }
+
+    /// Implementation of [`Self::emit_events()`].
+    ///
+    /// Usable when you can't call [`Self::emit_events()`] due to mutable reference to self.
+    fn emit_events_impl<I: IntoIterator<Item = T>, T: Into<WorldEvent>>(
+        triggers: &mut TriggerSet,
+        events_buffer: &mut Vec<Event>,
+        world_events: I,
+    ) {
         let data_events: SmallVec<[DataEvent; 3]> = world_events
             .into_iter()
             .map(Into::into)
@@ -1251,10 +1286,9 @@ impl WorldStateView {
             .collect();
 
         for event in data_events.iter() {
-            self.world.triggers.handle_data_event(event.clone());
+            triggers.handle_data_event(event.clone());
         }
-        self.events_buffer
-            .extend(data_events.into_iter().map(Into::into));
+        events_buffer.extend(data_events.into_iter().map(Into::into));
     }
 
     /// Set new permission token schema.

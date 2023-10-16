@@ -102,6 +102,7 @@ pub mod model {
         /// An Identification of the [`Account`].
         pub id: AccountId,
         /// Assets in this [`Account`].
+        #[serde(deserialize_with = "deserialize_assets")]
         pub assets: AssetsMap,
         /// [`Account`]'s signatories.
         pub signatories: Signatories,
@@ -287,6 +288,24 @@ impl FromStr for AccountId {
             }),
         }
     }
+}
+
+fn deserialize_assets<'de, D>(deserializer: D) -> Result<AssetsMap, D::Error>
+where
+    D: serde::de::Deserializer<'de>,
+{
+    let mut first_account_id: Option<AccountId> = None;
+    crate::rc_decode::deserialize_map_with(deserializer, |id, asset: &mut Asset| {
+        match &mut first_account_id {
+            Some(account_id) => {
+                asset.id.account_id = account_id.clone();
+            }
+            None => {
+                first_account_id = Some(asset.id.account_id.clone());
+            }
+        }
+        *id = asset.id.clone();
+    })
 }
 
 impl Default for SignatureCheckCondition {
